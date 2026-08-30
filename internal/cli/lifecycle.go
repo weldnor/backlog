@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/antonkolesov/backlog/internal/store"
-	"github.com/antonkolesov/backlog/internal/task"
+	"github.com/weldnor/backlog/internal/store"
+	"github.com/weldnor/backlog/internal/task"
 )
 
 func runAdd(env Env, args []string) error {

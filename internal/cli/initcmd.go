@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"path/filepath"
 
-	"github.com/antonkolesov/backlog/internal/skills"
-	"github.com/antonkolesov/backlog/internal/store"
+	"github.com/weldnor/backlog/internal/skills"
+	"github.com/weldnor/backlog/internal/store"
 )
 
 func runInit(env Env, args []string) error {

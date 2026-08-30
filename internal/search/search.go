@@ -14,7 +14,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/antonkolesov/backlog/internal/task"
+	"github.com/weldnor/backlog/internal/task"
 )
 
 // The fields a query is matched against. Status, timestamps and everything

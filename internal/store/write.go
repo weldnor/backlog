@@ -7,7 +7,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/antonkolesov/backlog/internal/task"
+	"github.com/weldnor/backlog/internal/task"
 )
 
 // Create allocates an identifier for t and writes it.

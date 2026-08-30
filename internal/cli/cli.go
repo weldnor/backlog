@@ -14,7 +14,7 @@ import (
 )
 
 // Version is the build-time version string. Override with
-// -ldflags "-X github.com/antonkolesov/backlog/internal/cli.Version=..."
+// -ldflags "-X github.com/weldnor/backlog/internal/cli.Version=..."
 var Version = "0.3.0"
 
 // Env carries everything a command needs from the outside world, so that tests

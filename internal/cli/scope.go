@@ -4,8 +4,8 @@ import (
 	"flag"
 	"strings"
 
-	"github.com/antonkolesov/backlog/internal/store"
-	"github.com/antonkolesov/backlog/internal/task"
+	"github.com/weldnor/backlog/internal/store"
+	"github.com/weldnor/backlog/internal/task"
 )
 
 // scope holds the selection flags list and search share, so that the two

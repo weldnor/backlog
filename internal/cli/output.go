@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/antonkolesov/backlog/internal/task"
+	"github.com/weldnor/backlog/internal/task"
 )
 
 // stringList collects a repeatable flag such as --tag.

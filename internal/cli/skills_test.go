@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/antonkolesov/backlog/internal/validate"
+	"github.com/weldnor/backlog/internal/validate"
 )
 
 func skillPath(h *harness, name string) string {

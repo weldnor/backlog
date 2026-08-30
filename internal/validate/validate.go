@@ -11,9 +11,9 @@ import (
 	"path/filepath"
 	"sort"
 
-	"github.com/antonkolesov/backlog/internal/skills"
-	"github.com/antonkolesov/backlog/internal/store"
-	"github.com/antonkolesov/backlog/internal/task"
+	"github.com/weldnor/backlog/internal/skills"
+	"github.com/weldnor/backlog/internal/store"
+	"github.com/weldnor/backlog/internal/task"
 )
 
 // Finding is one problem found in a backlog.

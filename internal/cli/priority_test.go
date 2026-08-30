@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/antonkolesov/backlog/internal/task"
+	"github.com/weldnor/backlog/internal/task"
 )
 
 // prioritiesOf reports the priority of each listed task, in the order listed.

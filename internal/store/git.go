@@ -4,7 +4,7 @@ import (
 	"os/exec"
 	"strings"
 
-	"github.com/antonkolesov/backlog/internal/task"
+	"github.com/weldnor/backlog/internal/task"
 )
 
 // Provenance records the branch and commit a finding was observed on.

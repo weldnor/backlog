@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/antonkolesov/backlog/internal/task"
+	"github.com/weldnor/backlog/internal/task"
 )
 
 func newStore(t *testing.T) *Store {

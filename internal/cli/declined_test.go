@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/antonkolesov/backlog/internal/task"
+	"github.com/weldnor/backlog/internal/task"
 )
 
 // decline adds a task and declines it, which is the shape almost every case

@@ -4,7 +4,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/antonkolesov/backlog/internal/validate"
+	"github.com/weldnor/backlog/internal/validate"
 )
 
 // ErrFindings reports that validation found at least one error. It carries no

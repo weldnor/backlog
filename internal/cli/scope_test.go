@@ -3,7 +3,7 @@ package cli
 import (
 	"testing"
 
-	"github.com/antonkolesov/backlog/internal/task"
+	"github.com/weldnor/backlog/internal/task"
 )
 
 // selectedStatuses is what list and search agree, or deliberately disagree, on.

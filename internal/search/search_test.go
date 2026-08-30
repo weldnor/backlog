@@ -4,7 +4,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/antonkolesov/backlog/internal/task"
+	"github.com/weldnor/backlog/internal/task"
 )
 
 func mk(id int, title, body, status string, tags ...string) *task.Task {

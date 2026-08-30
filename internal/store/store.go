@@ -11,7 +11,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/antonkolesov/backlog/internal/task"
+	"github.com/weldnor/backlog/internal/task"
 )
 
 // Directory names. They are fixed: there is no configuration file, so a

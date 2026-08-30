@@ -19,7 +19,7 @@ be done; that decision stays with the planning system triage promotes into.
 ## Installing
 
 ```
-go install github.com/antonkolesov/backlog@latest
+go install github.com/weldnor/backlog@latest
 ```
 
 Install once; the binary works in any project. It finds the backlog by walking

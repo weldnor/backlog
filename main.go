@@ -6,7 +6,7 @@ package main
 import (
 	"os"
 
-	"github.com/antonkolesov/backlog/internal/cli"
+	"github.com/weldnor/backlog/internal/cli"
 )
 
 func main() {

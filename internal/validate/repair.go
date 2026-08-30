@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"path/filepath"
 
-	"github.com/antonkolesov/backlog/internal/store"
-	"github.com/antonkolesov/backlog/internal/task"
+	"github.com/weldnor/backlog/internal/store"
+	"github.com/weldnor/backlog/internal/task"
 )
 
 // repair fixes the findings that have a single unambiguous correction:

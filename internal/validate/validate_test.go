@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/antonkolesov/backlog/internal/store"
+	"github.com/weldnor/backlog/internal/store"
 )
 
 // clean is a task file with nothing wrong with it.

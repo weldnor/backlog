@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/antonkolesov/backlog/internal/search"
+	"github.com/weldnor/backlog/internal/search"
 )
 
 // SearchResultView is the JSON shape of one search result: the full task, plus

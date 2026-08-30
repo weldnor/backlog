@@ -1,4 +1,4 @@
-module github.com/antonkolesov/backlog
+module github.com/weldnor/backlog
 
 go 1.26.6
 
