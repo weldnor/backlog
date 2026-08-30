@@ -18,6 +18,6 @@
 
 ## 5. Verification
 
-- [ ] 5.1 Push the branch and confirm in the GitHub Actions run that `lint`, `test`, and `build` appear as three independent, parallel job results on the commit
-- [ ] 5.2 Open (or update) a pull request from the branch and confirm the same three checks report status on the pull request
-- [ ] 5.3 Deliberately introduce a failure in each job in turn (an unformatted file, a failing test, a compile error) on a scratch commit, confirm the corresponding job goes red while the others stay green, then revert the scratch commit
+- [x] 5.1 Push the branch and confirm in the GitHub Actions run that `lint`, `test`, and `build` appear as three independent, parallel job results on the commit
+- [x] 5.2 Open (or update) a pull request from the branch and confirm the same three checks report status on the pull request
+- [x] 5.3 Deliberately introduce a failure in each job in turn (an unformatted file, a failing test, a compile error) on a scratch commit, confirm the corresponding job goes red while the others stay green, then revert the scratch commit
