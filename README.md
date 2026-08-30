@@ -1,0 +1,334 @@
+# backlog
+
+A per-project capture inbox for findings worth deferring.
+
+When a coding agent works on a task it routinely notices adjacent problems that
+should be fixed later — a race condition, a flaky test, a leaky abstraction.
+Today those findings are either fixed immediately, derailing the current task,
+or mentioned in chat and lost. `backlog` is the cheap, durable place to put
+them: one command to record a finding and get back to work, and a way to triage
+what accumulated later.
+
+It is deliberately **not** a task-execution system. There is no board, no
+milestones, no assignment. Planning and execution already happen elsewhere, and
+the binary stays unaware of them. A task does carry a `priority`, but it records
+how severe the finding is — how bad it would be to leave it unfixed — which is
+what the capturing agent knows. It is not a statement about when the work will
+be done; that decision stays with the planning system triage promotes into.
+
+## Installing
+
+```
+go install github.com/antonkolesov/backlog@latest
+```
+
+Install once; the binary works in any project. It finds the backlog by walking
+up from the working directory to the nearest `.backlog/`, the way `git` finds a
+repository, so it can be run from anywhere inside a project.
+
+## Getting started
+
+```
+backlog init
+backlog add "Session cache is not safe for concurrent readers" \
+  --description "Two goroutines write the map without a lock." \
+  --tag bug --file internal/session/cache.go
+backlog list
+```
+
+`init` creates `.backlog/` and installs two Claude Code skills into
+`.claude/skills/`. Commit both directories: the backlog and the guidance travel
+with the repository.
+
+## Commands
+
+Every command that reports tasks accepts `--json` for machine consumption and
+prints a human-readable form otherwise. Diagnostics always go to standard error
+and failures always exit non-zero, so `--json` output can be piped without
+filtering.
+
+### `backlog init`
+
+Creates `.backlog/tasks/` and `.backlog/archive/` and installs the agent
+skills. It is idempotent and never destroys existing tasks, so it is safe to
+re-run — which is also how the skills are brought up to date after upgrading
+the binary.
+
+```
+backlog init                 # create or refresh
+backlog init --force         # also replace skills that were edited locally
+backlog init --no-skills     # create the backlog only
+```
+
+### `backlog add`
+
+Records a task. Never prompts, so it works with no terminal attached.
+
+```
+backlog add "A one-line statement of the problem"
+backlog add "HTTP 500 on login" \
+  --description "Longer context: what is wrong and why it matters." \
+  --tag bug --tag auth \
+  --file internal/auth/session.go --file internal/auth/token.go \
+  --priority high \
+  --ref "issue:1423"
+```
+
+| Option | Meaning |
+| --- | --- |
+| `--title` | the title, if you would rather not pass it positionally |
+| `--description` | the markdown body |
+| `--priority` | `high`, `medium` (default) or `low` |
+| `--tag` | a tag; repeatable |
+| `--file` | a source file the finding concerns; repeatable |
+| `--ref` | a free-form link to external work; repeatable |
+| `--author` | `agent` (default) or `human` |
+
+The current git branch and commit are recorded automatically, and are simply
+left out when the project is not a git repository.
+
+### `backlog list`
+
+Shows tasks in `todo` and `doing`, grouped by status in the order `todo`,
+`doing`, `done`, `declined`. Both terminal statuses are left out by default and
+included by `--all`; either can be asked for by name.
+
+```
+backlog list
+backlog list --all               # include the archive: done and declined
+backlog list --status declined   # repeatable
+backlog list --tag bug           # repeatable; all given tags must match
+backlog list --priority high     # repeatable; any given priority matches
+backlog list --json
+```
+
+Tasks are ordered by descending priority, then by ascending identifier. The
+human output keeps that order within each status group; `--json` is the same
+single sequence, ungrouped.
+
+An empty result is an answer, not a failure: it exits zero.
+
+### `backlog search`
+
+Case-insensitive substring search over titles, descriptions and tags — never
+over status, priority, the reason a task was declined, or anything under
+`metadata`. This is the mechanism for avoiding
+duplicates; there is no automatic deduplication, because deciding whether two
+descriptions mean the same thing is a job for a reader, not a string metric.
+
+```
+backlog search cache
+backlog search "HTTP [45]0\d" --regex
+backlog search cache --all --json
+```
+
+Results are deterministic: title matches first, then description and tag
+matches, ascending by identifier within each group. `--regex` is also
+case-insensitive; use `(?-i)` to turn that off. An invalid pattern exits
+non-zero with the syntax error.
+
+Unlike `list`, `search` has no `--priority` filter, and priority never affects
+the ranking. Search answers "has this already been recorded", which is a
+question about content; narrowing it by severity would let a duplicate hide
+behind a filter.
+
+For the same reason, **declined tasks are always in scope**, with or without
+`--all` — letting the archive scope hide one would let a duplicate hide behind
+the scope. `done` deliberately stays behind `--all`: a fixed problem that
+reappears is a regression, and genuinely new information, while a declined
+problem that reappears is the same decision arriving a second time. An explicit
+`--status` is taken at face value, so `--status todo` excludes declined tasks
+like anything else it does not name.
+
+### `backlog show`
+
+```
+backlog show 1
+backlog show 1 --json
+```
+
+Finds the task in either directory. An unknown identifier exits non-zero.
+
+### `backlog set`
+
+Changes status, priority, the decline reason and references, in any
+combination; at least one is required. Setting a task to `done` or `declined`
+moves it into the archive; setting it back out returns it to `tasks/`.
+
+```
+backlog set 1 doing
+backlog set 1 done --ref "change:fix-session-cache"
+backlog set 1 declined --reason "the call site is single-threaded"
+backlog set 1 --reason "sharper wording for the same decision"
+backlog set 1 --ref "issue:1423"
+backlog set 1 --priority high
+backlog set 1 doing --priority low
+```
+
+Changing only the priority leaves the status, and therefore the file's
+directory, alone. This is how triage revises a severity that was judged in a
+hurry.
+
+`--reason` is required when declining and rejected otherwise: `declined` with no
+reason fails, and a reason given with any other status fails. On its own it
+revises the text of a decline that already stands, which is only allowed on a
+task that is already `declined`. Setting a declined task to any other status
+clears the reason. A decline nobody can audit is the state the status exists to
+eliminate, which is why the reason is not optional.
+
+### `backlog rm`
+
+Permanently deletes a task from either directory.
+
+```
+backlog rm 1
+```
+
+`rm` is for an entry that should never have been recorded — a duplicate, a
+mis-capture, something filed by accident. It is not how you record a decision
+not to act on a finding: that is `declined`, which keeps the finding and its
+reasoning where `search` can still find them. The CLI enforces nothing here; the
+distinction is guidance, and `rm` deletes whatever identifier it is given.
+
+### `backlog validate`
+
+Checks structure, per-file frontmatter and cross-file consistency. This is what
+makes hand-editing a supported workflow rather than a hazard.
+
+```
+backlog validate
+backlog validate --strict    # treat warnings as errors
+backlog validate --fix       # repair the unambiguous findings
+backlog validate --json
+```
+
+A declined task with no `reason`, and a `reason` on a task that is not
+declined, are both reported as errors. Errors mean the backlog cannot be read or
+operated on reliably; warnings mean it is readable but violates a convention. The command exits non-zero only on
+errors, so it can gate a commit hook.
+
+`--fix` repairs only what has a single unambiguous correction: renaming a file
+whose slug drifted from its title, moving a task into the directory its status
+requires, adding a missing format version, writing `priority: medium` into a
+file that declares no priority, normalising timestamp formatting and
+de-duplicating tags — which includes moving a declined task that is sitting
+among the active ones. A priority outside the permitted set is something someone
+typed deliberately, so it is reported and left as it is. Anything else needing a
+judgement is reported and left alone: two tasks sharing an identifier,
+frontmatter that does not parse, a declined task with no reason, and a reason
+recorded on a task that is not declined. The last two are prose to write or
+prose to delete, which no tool can decide.
+
+## The task file format
+
+One markdown file per task, so that each operation touches exactly one file and
+two agents on parallel branches do not conflict on the same lines.
+
+```
+.backlog/
+  tasks/      # status todo and doing
+  archive/    # status done and declined
+```
+
+Files are named `<id>-<slug>.md`, where the identifier is the lowest unused
+positive integer, zero-padded to three digits, and the slug is a kebab-case
+reduction of the title with non-ASCII letters kept as they are.
+
+```markdown
+---
+id: 1
+title: Session cache is not safe for concurrent readers
+status: todo
+priority: medium
+tags:
+  - bug
+  - concurrency
+metadata:
+  schema: 1
+  created: 2026-08-30T20:59:51Z
+  author: agent
+  source:
+    files:
+      - internal/session/cache.go
+    branch: main
+    commit: 0badc0ffee1234567890abcdef
+  refs:
+    - issue:1423
+---
+Two goroutines write the map without a lock.
+```
+
+The frontmatter is split by one question: **would a person edit this field on
+purpose?**
+
+- **Top level — author-owned.** `id`, `title`, `status`, `priority`, `reason`,
+  `tags`. Safe to edit by hand. A field the CLI does not recognise is preserved
+  on write and reported only as a warning, leaving room to experiment.
+- **`metadata` — tool-owned.** `schema`, `created`, `author`, `source`, `refs`.
+  The key set is **closed**: an unrecognised key is an error, which is what
+  catches a typo like `creted`.
+
+`priority` is one of `high`, `medium` or `low`, and defaults to `medium`. A file
+that declares no priority is read as `medium` — a backlog written before the
+field existed keeps working — and `validate` reports it as a repairable warning
+until `validate --fix`, or any other write to that file, adds the line. A value
+outside the three is kept as written and reported as an error.
+
+`status` is one of `todo`, `doing`, `done` or `declined`. The last two are
+terminal — the task is finished, either acted on or deliberately not — and are
+what `archive/` holds.
+
+`reason` is the prose explaining a decline, and is present **exactly when** the
+status is `declined`: a declined task without one is an error, and so is a
+reason on a task in any other status. Neither is repairable — one needs prose
+written and the other needs prose deleted, and both are judgements. Reopening a
+declined task removes the field, because it describes a state the task is no
+longer in and git already keeps what it said.
+
+The body is the description, and is preserved verbatim by any write that does
+not change it.
+
+There is no `updated` field. It would add noise to every diff and, since only
+the CLI would maintain it, hand-edits would silently make it lie. Git already
+records modification time.
+
+There is no configuration file. The layout, the four statuses and the
+identifier scheme are fixed.
+
+Entries in `metadata.refs` are stored verbatim and never resolved. The binary
+has no knowledge of OpenSpec, GitHub issues, or any other planning system; all
+of that lives in the triage skill.
+
+## The agent workflow
+
+`backlog init` installs two Claude Code skills into the project. They are
+separate files because a skill's description is what the model matches against
+to decide whether to load it, and "record a finding you just hit" and "review
+what has accumulated" are opposite situations.
+
+**`backlog-capture`** — the hot path. It fires when an agent, mid-task, finds a
+problem outside the scope of what it was asked to do. Most of it is about the
+threshold: a finding is recorded only when it is outside the current scope, is
+not being fixed now, and concerns the repository rather than the session — and
+never for stylistic preferences, speculative refactoring, or anything already
+covered by work in progress. It requires a `backlog search` before every `add`,
+and requires file references whenever the finding is tied to a location in the
+code.
+
+**`backlog-triage`** — the cold path. It fires when someone asks for the backlog
+to be reviewed. It reads the accumulated tasks, checks whether each still holds
+against the current code, and gives every one a disposition: promote, fix now,
+keep, or decline with a reason that stays on the task. It works out at run time which planning system the project uses,
+and records the resulting link as a free-form reference.
+
+The skills are stamped with the version of the binary that wrote them.
+`backlog validate` warns when they fall behind, and `backlog init` brings them
+up to date. A skill you have edited locally is never silently overwritten — it
+is skipped, and only `backlog init --force` replaces it.
+
+## Development
+
+```
+go build ./...
+go test ./...
+```
