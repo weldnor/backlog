@@ -17,9 +17,14 @@ import (
 // identifier is claimed by creating the file exclusively under a name that
 // depends only on the identifier, and the slug is attached by a rename
 // afterwards. Exclusive create is atomic on every target filesystem, so two
-// processes can never claim the same number; and if a process dies between the
-// claim and the rename, what it leaves behind is a complete, valid task file
-// whose name validate reports as drifted and --fix corrects.
+// processes can never simultaneously hold that bare-numeric claim file - but
+// once one of them renames it to its slugged final name, the bare name is
+// free again, and a process that started its scan earlier can reclaim it. The
+// post-claim existence check therefore covers the claiming directory too, not
+// just the other one, so that stale claim is caught before it overwrites the
+// file that already won the identifier. If a process dies between the claim
+// and the rename, what it leaves behind is a complete, valid task file whose
+// name validate reports as drifted and --fix corrects.
 func (s *Store) Create(t *task.Task) error {
 	used, err := s.UsedIDs()
 	if err != nil {
@@ -43,9 +48,13 @@ func (s *Store) Create(t *task.Task) error {
 			return err
 		}
 
-		// A concurrent process could have moved a task carrying this
-		// identifier into the other directory since the scan above.
-		if taken, err := s.idTakenElsewhere(id, dir); err != nil || taken {
+		// A concurrent process could have already finished claiming this
+		// identifier in this very directory: it renamed its own claim file
+		// from the bare NNN.md we just recreated to its slugged final name,
+		// which frees NNN.md for us to reclaim here. Renaming onto that
+		// final name ourselves would silently overwrite its file, so the
+		// check must cover claimDir too, not just the other directory.
+		if taken, err := s.idTakenByAnotherFile(id, dir, filepath.Base(claim)); err != nil || taken {
 			f.Close()
 			os.Remove(claim)
 			if err != nil {
@@ -71,16 +80,16 @@ func (s *Store) Create(t *task.Task) error {
 	}
 }
 
-func (s *Store) idTakenElsewhere(id int, claimDir string) (bool, error) {
+func (s *Store) idTakenByAnotherFile(id int, claimDir, claimName string) (bool, error) {
 	for _, dir := range []string{s.TasksPath(), s.ArchivePath()} {
-		if dir == claimDir {
-			continue
-		}
 		names, err := taskFileNames(dir)
 		if err != nil {
 			return false, err
 		}
 		for _, name := range names {
+			if dir == claimDir && name == claimName {
+				continue // the bare claim file we just created, not a collision
+			}
 			if got, ok := task.IDFromFileName(name); ok && got == id {
 				return true, nil
 			}
