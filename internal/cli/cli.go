@@ -61,6 +61,7 @@ func commands() []command {
 		{"set", "change a task's status or attach a reference", runSet},
 		{"rm", "delete a task", runRm},
 		{"validate", "check the backlog for problems", runValidate},
+		{"browse", "start a local web UI for the backlog", runBrowse},
 	}
 }
 

@@ -4,10 +4,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"path/filepath"
 	"strings"
 
 	"github.com/weldnor/backlog/internal/task"
+	"github.com/weldnor/backlog/internal/taskview"
 )
 
 // stringList collects a repeatable flag such as --tag.
@@ -20,79 +20,19 @@ func (l *stringList) Set(v string) error {
 	return nil
 }
 
-// TaskView is the JSON shape of a task. It is the interface agents and scripts
-// consume, so it is written out explicitly rather than derived from the
-// internal model, and metadata.schema exists so it can be moved deliberately.
-type TaskView struct {
-	ID          int      `json:"id"`
-	Title       string   `json:"title"`
-	Status      string   `json:"status"`
-	Priority    string   `json:"priority"`
-	Reason      string   `json:"reason"`
-	Tags        []string `json:"tags"`
-	Description string   `json:"description"`
-	Metadata    MetaView `json:"metadata"`
-	File        string   `json:"file"`
-}
+// TaskView is the JSON shape of a task, shared with internal/browse so the
+// two never disagree about what one looks like. See internal/taskview.
+type TaskView = taskview.TaskView
 
 // MetaView is the JSON shape of the tool-owned metadata block.
-type MetaView struct {
-	Schema  int        `json:"schema"`
-	Created string     `json:"created"`
-	Author  string     `json:"author"`
-	Source  SourceView `json:"source"`
-	Refs    []string   `json:"refs"`
-}
+type MetaView = taskview.MetaView
 
 // SourceView is the JSON shape of where a finding was observed.
-type SourceView struct {
-	Files  []string `json:"files"`
-	Branch string   `json:"branch"`
-	Commit string   `json:"commit"`
-}
+type SourceView = taskview.SourceView
 
-func view(t *task.Task) TaskView {
-	return TaskView{
-		ID:       t.ID,
-		Title:    t.Title,
-		Status:   t.Status,
-		Priority: t.Priority,
-		// Always present, empty for a task that is not declined, so the shape
-		// of the JSON does not vary with status.
-		Reason:      t.Reason,
-		Tags:        nonNil(t.Tags),
-		Description: strings.TrimRight(t.Body, "\n"),
-		Metadata: MetaView{
-			Schema:  t.Meta.Schema,
-			Created: t.Meta.Created,
-			Author:  t.Meta.Author,
-			Source: SourceView{
-				Files:  nonNil(t.Meta.Source.Files),
-				Branch: t.Meta.Source.Branch,
-				Commit: t.Meta.Source.Commit,
-			},
-			Refs: nonNil(t.Meta.Refs),
-		},
-		File: filepath.Base(t.Path),
-	}
-}
+func view(t *task.Task) TaskView { return taskview.View(t) }
 
-func views(tasks []*task.Task) []TaskView {
-	out := make([]TaskView, 0, len(tasks))
-	for _, t := range tasks {
-		out = append(out, view(t))
-	}
-	return out
-}
-
-// nonNil keeps JSON lists as [] rather than null, so a consumer can iterate
-// without a nil check.
-func nonNil(s []string) []string {
-	if s == nil {
-		return []string{}
-	}
-	return s
-}
+func views(tasks []*task.Task) []TaskView { return taskview.Views(tasks) }
 
 // writeJSON emits v as indented JSON on the data stream. Diagnostics never go
 // here: a command that fails in JSON mode writes to stderr and leaves stdout

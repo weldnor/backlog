@@ -43,9 +43,10 @@ with the repository.
 ## Commands
 
 Every command that reports tasks accepts `--json` for machine consumption and
-prints a human-readable form otherwise. Diagnostics always go to standard error
-and failures always exit non-zero, so `--json` output can be piped without
-filtering.
+prints a human-readable form otherwise; `browse` is the exception, since it
+serves a UI rather than reporting tasks itself — its own `--json` prints the
+URL it is listening on. Diagnostics always go to standard error and failures
+always exit non-zero, so `--json` output can be piped without filtering.
 
 ### `backlog init`
 
@@ -218,6 +219,49 @@ judgement is reported and left alone: two tasks sharing an identifier,
 frontmatter that does not parse, a declined task with no reason, and a reason
 recorded on a task that is not declined. The last two are prose to write or
 prose to delete, which no tool can decide.
+
+### `backlog browse`
+
+Starts a local web UI for the backlog: a list and a board view, filters by
+status/priority/tag and a free-text search, a detail dialog for reading and
+editing a task, and a form for creating one. It is the one place title,
+description and tags can be edited after creation — `set` still only reaches
+status, priority, the decline reason and references.
+
+```
+backlog browse
+backlog browse --port 4173
+backlog browse --no-open
+backlog browse --host 0.0.0.0     # reachable beyond this machine — see below
+```
+
+| Option | Meaning |
+| --- | --- |
+| `--host` | the address to bind to; default `127.0.0.1` |
+| `--port` | the port to listen on; default an OS-assigned free port |
+| `--no-open` | do not launch a browser |
+| `--json` | print `{"url": "..."}` instead of the plain-text URL |
+
+The server binds to loopback by default and stays running until interrupted
+(`Ctrl+C`), at which point it shuts down and the command exits zero. There is
+no authentication: reaching the server is enough to read, create and edit
+every task, which is fine as long as only this machine can reach it — exactly
+the access a person already has to `.backlog/*.md` directly. Binding to
+anything other than loopback (`--host 0.0.0.0`, say, for a remote dev
+container) makes that write API reachable from the network, so `browse`
+prints a warning to stderr the moment such a host is used.
+
+Everything created or edited through the UI is written by the same
+`internal/store` paths `add` and `set` use, to the same task files, with the
+same validation. The UI records `author: human` on everything it creates,
+since a person filling in a browser form is definitionally a human. There is
+no way to delete a task from the UI — `rm` remains the only way, deliberately:
+`browse`'s first version is for creating and editing, not for a destructive
+action with no confirmation-by-typing the way a terminal command has.
+
+The UI is a single embedded page with no network dependency of its own — its
+one font is vendored into the binary — so it works with `backlog` installed
+on a machine with no internet access, the same as every other command.
 
 ## The task file format
 

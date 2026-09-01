@@ -1,7 +1,11 @@
 package main_test
 
 import (
+	"bytes"
 	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -9,6 +13,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 )
 
 // binary is the compiled CLI. The end-to-end tests drive the real executable,
@@ -606,5 +611,208 @@ func TestDeclineThroughTheLifecycle(t *testing.T) {
 
 	if got := backlog(t, dir, "validate"); got.code != 0 {
 		t.Errorf("validate exited %d after the round trip: %s", got.code, got.stdout+got.stderr)
+	}
+}
+
+// browseServer starts `backlog browse` against dir as a real subprocess and
+// returns its base URL, ready to receive requests. It is shut down (SIGINT,
+// the same signal Ctrl+C sends) and reaped when the test ends.
+func browseServer(t *testing.T, dir string) string {
+	t.Helper()
+	cmd := exec.Command(binary, "browse", "--port", "0", "--no-open", "--json")
+	cmd.Dir = dir
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cmd.Stderr = os.Stderr
+	if err := cmd.Start(); err != nil {
+		t.Fatalf("starting backlog browse: %v", err)
+	}
+
+	var v struct {
+		URL string `json:"url"`
+	}
+	dec := json.NewDecoder(stdout)
+	if err := dec.Decode(&v); err != nil {
+		t.Fatalf("reading the printed URL: %v", err)
+	}
+
+	t.Cleanup(func() {
+		_ = cmd.Process.Signal(os.Interrupt)
+		done := make(chan error, 1)
+		go func() { done <- cmd.Wait() }()
+		select {
+		case err := <-done:
+			if err != nil {
+				t.Errorf("backlog browse did not exit cleanly: %v", err)
+			}
+		case <-time.After(5 * time.Second):
+			t.Error("backlog browse did not exit within 5s of an interrupt")
+			cmd.Process.Kill()
+		}
+	})
+	return v.URL
+}
+
+func browseAPI(t *testing.T, method, url string, body any) (int, []byte) {
+	t.Helper()
+	var reader io.Reader
+	if body != nil {
+		b, err := json.Marshal(body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		reader = bytes.NewReader(b)
+	}
+	req, err := http.NewRequest(method, url, reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("%s %s: %v", method, url, err)
+	}
+	defer res.Body.Close()
+	got, err := io.ReadAll(res.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return res.StatusCode, got
+}
+
+// TestBrowseAPIMatchesCLI drives `backlog browse`'s HTTP API directly —
+// create, list, and an edit through every status transition, including
+// title/description/tags, which only the UI can reach — and asserts the
+// resulting task files match what the equivalent `add`/`set` CLI invocations
+// produce against a separate, otherwise identical backlog.
+func TestBrowseAPIMatchesCLI(t *testing.T) {
+	uiDir := gitProject(t)
+	mustBacklog(t, uiDir, "init")
+	cliDir := gitProject(t)
+	mustBacklog(t, cliDir, "init")
+
+	base := browseServer(t, uiDir)
+
+	// Create, the way `add` would.
+	createBody := map[string]any{
+		"title": "Race in session cache", "description": "Two goroutines write the map without a lock.",
+		"tags": []string{"bug", "concurrency"}, "priority": "high",
+	}
+	status, respBody := browseAPI(t, http.MethodPost, base+"/api/tasks", createBody)
+	if status != http.StatusCreated {
+		t.Fatalf("POST /api/tasks status = %d: %s", status, respBody)
+	}
+	var created taskJSON
+	unmarshal(t, string(respBody), &created)
+
+	mustBacklog(t, cliDir, "add", "Race in session cache",
+		"--description", "Two goroutines write the map without a lock.",
+		"--tag", "bug", "--tag", "concurrency", "--priority", "high", "--author", "human")
+
+	// List: the default view should show exactly the one todo task.
+	status, respBody = browseAPI(t, http.MethodGet, base+"/api/tasks", nil)
+	if status != http.StatusOK {
+		t.Fatalf("GET /api/tasks status = %d: %s", status, respBody)
+	}
+	var listed []taskJSON
+	unmarshal(t, string(respBody), &listed)
+	if len(listed) != 1 || listed[0].Title != "Race in session cache" {
+		t.Fatalf("GET /api/tasks = %+v, want just the one task just created", listed)
+	}
+
+	// Edit title, description and tags together — a UI-only capability, per
+	// design.md's "Editing is a full-record PATCH" decision.
+	patchBody := map[string]any{
+		"title":       "Session cache is not safe for concurrent readers",
+		"description": "Two goroutines write the map without a lock. The reader path is\nfine, but refresh mutates the same map from a background ticker.",
+		"tags":        []string{"bug", "concurrency", "race"},
+	}
+	taskURL := fmt.Sprintf("%s/api/tasks/%d", base, created.ID)
+	status, respBody = browseAPI(t, http.MethodPatch, taskURL, patchBody)
+	if status != http.StatusOK {
+		t.Fatalf("PATCH title/description/tags status = %d: %s", status, respBody)
+	}
+
+	// Every status transition: todo -> doing -> done -> declined -> todo.
+	for _, step := range []struct {
+		status, reason string
+	}{
+		{"doing", ""},
+		{"done", ""},
+		{"declined", "superseded by a different fix"},
+		{"todo", ""},
+	} {
+		body := map[string]any{"status": step.status, "reason": step.reason}
+		status, respBody = browseAPI(t, http.MethodPatch, taskURL, body)
+		if status != http.StatusOK {
+			t.Fatalf("PATCH status=%s failed: %d: %s", step.status, status, respBody)
+		}
+	}
+
+	mustBacklog(t, cliDir, "set", "1", "doing")
+	mustBacklog(t, cliDir, "set", "1", "done")
+	mustBacklog(t, cliDir, "set", "1", "declined", "--reason", "superseded by a different fix")
+	mustBacklog(t, cliDir, "set", "1", "todo")
+
+	// The browse-only fields have no CLI equivalent to compare against
+	// directly, so apply the same edit through the file the CLI wrote, using
+	// the same on-disk format both sides produce.
+	cliFile := filepath.Join(cliDir, ".backlog", "tasks", "001-race-in-session-cache.md")
+	renamed := filepath.Join(cliDir, ".backlog", "tasks", "001-session-cache-is-not-safe-for-concurrent-readers.md")
+	if err := os.Rename(cliFile, renamed); err != nil {
+		t.Fatal(err)
+	}
+	src := read(t, renamed)
+	src = strings.Replace(src, "title: Race in session cache", "title: Session cache is not safe for concurrent readers", 1)
+	src = strings.Replace(src,
+		"tags:\n  - bug\n  - concurrency\n",
+		"tags:\n  - bug\n  - concurrency\n  - race\n", 1)
+	src = strings.Replace(src,
+		"Two goroutines write the map without a lock.\n",
+		"Two goroutines write the map without a lock. The reader path is\nfine, but refresh mutates the same map from a background ticker.\n", 1)
+	if err := os.WriteFile(renamed, []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	uiFinal := read(t, filepath.Join(uiDir, ".backlog", "tasks", "001-session-cache-is-not-safe-for-concurrent-readers.md"))
+	cliFinal := read(t, renamed)
+
+	// created/schema timestamps are identical only if the two runs land in
+	// the same second; compare everything else, which is deterministic.
+	strip := func(s string) string {
+		lines := strings.Split(s, "\n")
+		out := lines[:0]
+		for _, l := range lines {
+			if strings.Contains(l, "created:") || strings.Contains(l, "commit:") {
+				continue
+			}
+			out = append(out, l)
+		}
+		return strings.Join(out, "\n")
+	}
+	if strip(uiFinal) != strip(cliFinal) {
+		t.Errorf("browse-produced file does not match the CLI-equivalent sequence:\n--- browse ---\n%s\n--- cli ---\n%s", uiFinal, cliFinal)
+	}
+
+	// GET reflects the same state PATCH just wrote.
+	status, respBody = browseAPI(t, http.MethodGet, taskURL, nil)
+	if status != http.StatusOK {
+		t.Fatalf("GET %s status = %d: %s", taskURL, status, respBody)
+	}
+	var final taskJSON
+	unmarshal(t, string(respBody), &final)
+	if final.Status != "todo" || final.Reason != "" || len(final.Tags) != 3 {
+		t.Errorf("final task = %+v, want todo, no reason, 3 tags", final)
+	}
+	if final.Metadata.Author != "human" {
+		t.Errorf("author = %q, want human: everything created through the UI is", final.Metadata.Author)
+	}
+
+	if got := backlog(t, uiDir, "validate"); got.code != 0 {
+		t.Errorf("validate exited %d after the browse-driven round trip: %s", got.code, got.stdout+got.stderr)
 	}
 }
