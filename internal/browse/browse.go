@@ -70,6 +70,13 @@ func Serve(st *store.Store, opts Options) error {
 	}
 	srv := &http.Server{Handler: mux}
 
+	// Start catching interrupts before announcing readiness. A caller — or a
+	// test — that acts the instant the URL appears can signal us before we
+	// would otherwise have installed the handler, and an uncaught SIGINT
+	// kills the process instead of triggering a graceful shutdown.
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
 	url := "http://" + ln.Addr().String()
 	if opts.Ready != nil {
 		opts.Ready(url)
@@ -79,9 +86,6 @@ func Serve(st *store.Store, opts Options) error {
 			opts.logf("could not open a browser: %v", err)
 		}
 	}
-
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
 
 	serveErr := make(chan error, 1)
 	go func() { serveErr <- srv.Serve(ln) }()
