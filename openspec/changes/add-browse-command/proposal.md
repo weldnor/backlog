@@ -11,10 +11,17 @@ machine-facing path (agents, scripts, `--json`) keeps using the existing
 commands untouched.
 
 This is still not a task-execution system. `browse` shows the same four
-statuses the CLI already has and lets a person change them; it adds no board,
-no milestones, no assignment, and no notion of "next" beyond what `status`
-already means. It is a second interface onto the same store, not new
-scheduling machinery.
+statuses the CLI already has and lets a person change them; a board *view* of
+those statuses is one of two ways to look at the same list (see below), not
+drag-and-drop scheduling — and there is still no milestones, no assignment,
+and no notion of "next" beyond what `status` already means. It is a second
+interface onto the same store, not new scheduling machinery.
+
+The visual design is not invented for this proposal: it is taken directly
+from a Claude Design canvas the user built against this repository (`Backlog
+Web.dc.html`, read together with its bundled "Modernist" design-system
+tokens). design.md's Decisions section carries the concrete tokens, classes
+and screen layout pulled from it.
 
 ## What Changes
 
@@ -24,32 +31,40 @@ scheduling machinery.
   `--port` is given; `--host` overrides the bind address for the rare case a
   person needs it reachable from outside the loopback interface, with a
   printed warning that doing so exposes an unauthenticated write API.
-- The UI lists tasks grouped by status the way `backlog list --all` does,
-  with the same status, tag and priority filters and a client-side text
-  filter over what is already loaded. It is a grouped list, not a board: there
-  is no drag-and-drop, and moving a task between groups is done through the
-  same edit panel as every other field.
+- The UI offers two views of the same filtered list, switchable with a
+  segmented control the way the canvas shows it: a **list** (one row per
+  task, ordered like `backlog list`) and a **board** (one column per status,
+  in the fixed order `todo`, `doing`, `done`, `declined`). The board is a
+  read layout, not a scheduling tool: there is no drag-and-drop, and moving a
+  task between columns is done by changing its status in the same edit
+  dialog as every other field. Both views share the same status, priority and
+  tag filters (a left sidebar, per the canvas) and a client-side free-text
+  filter over what is already loaded.
 - The UI can create a task: title (required), description, tags, priority,
   source files and references — the same fields `backlog add` accepts.
   Everything created through the UI is recorded with `author: human`, since
   that is who is on the other end of a browser.
-- The UI can edit every field of an existing task in one panel: title,
+- Clicking a task opens a detail dialog — read view by default, an explicit
+  toggle switches it to edit — that can change every field: title,
   description, tags, priority, status and, when declined, the reason — going
   beyond what `backlog set` exposes today (title, description and tags are
   currently not editable from the CLI at all). Validation mirrors `add` and
   `set` exactly: an empty title is rejected, an invalid status or priority is
   rejected, a reason is required exactly when the resulting status is
-  `declined` and rejected otherwise.
+  `declined` and rejected otherwise. The same dialog shows the task's
+  tool-owned metadata (identifier, created timestamp, author, git
+  provenance, source files, refs) read-only alongside the editable fields.
 - Deleting a task through the UI is out of scope; `rm` remains the only way to
   permanently remove one. This keeps `browse`'s first version to what was
   asked for — creating and editing — without adding a destructive action to a
   surface that has no confirmation-by-typing the way a terminal command does.
-- The visual design follows Claude's own product: a warm paper background, a
-  serif display face for headings paired with a plain system sans-serif for
-  everything else (no network font loading — the binary has to keep working
-  offline), the signature terracotta accent for primary actions and priority,
-  generous rounded corners and soft borders instead of hard drop shadows, and
-  an automatic dark palette that follows `prefers-color-scheme`.
+- The visual design is the canvas's "Modernist" system, self-hosted rather
+  than loaded from Google Fonts so the binary keeps working offline: flat and
+  architectural, set entirely in Archivo, a light paper ground with **zero
+  border-radius** anywhere, strong 2px ink rules doing the organising instead
+  of drop shadows, and one accent — a saturated red-orange (`#ec3013`) — held
+  to the primary action and to priority. A dark palette (`#201e1d` ground,
+  the same accent) applies automatically via `prefers-color-scheme`.
 - Not breaking. No existing command, flag, output shape or file format
   changes. `browse` is additive: a project that never runs it is unaffected.
 

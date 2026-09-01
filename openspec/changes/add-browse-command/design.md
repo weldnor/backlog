@@ -9,6 +9,26 @@ properties of the existing code and of what the binary promises today:
   therefore has to be embedded (`go:embed`), and its assets cannot load fonts,
   scripts or styles from a CDN — the binary is expected to work offline, on an
   airgapped machine, the same as every other command.
+- **The visual design already exists and is not this change's to invent.**
+  The user supplied a Claude Design canvas built directly against this
+  repository — `Backlog Web.dc.html`, together with a bundled "Modernist"
+  design-system export (`styles.css`, `readme.md`, a component/foundation
+  reference set) — covering a desktop list/board view, the task detail-and-edit
+  dialog, and a mobile flow. Its own screen map (`github.md` in the export)
+  records what each screen was built from: the desktop list, board and editor
+  come from this README and `internal/task/task.go`; the mobile flow from the
+  README's file-naming and directory rules. The canvas's own interactive
+  prototype (artboard `1a`, with real filtering, sorting, read/edit and save
+  logic in its `<script>`) is the authoritative, load-bearing screen; the
+  supplementary artboards under sections "2" (a dark-ground illustration) and
+  "3" ("mobile, reworked" — a more elaborate phone flow with a split
+  write/preview editor, a decline sheet and a `···` overflow menu) are
+  explorations the canvas itself frames as "try next" ideas, not committed
+  screens — `github.md`'s own screen map only claims `1a` and `1b` as built
+  from the repo. This change implements `1a` and `1b`; section 2's tokens are
+  used only for what they actually specify (the dark-mode color values,
+  applied automatically rather than as a manual toggle), and section 3 is left
+  for a later change.
 - **The store's write paths are already safe for concurrent callers.**
   `Store.Create` claims an identifier with an exclusive file create and
   re-checks after claiming (internal/store/write.go), and `Store.Save` writes
@@ -29,9 +49,9 @@ properties of the existing code and of what the binary promises today:
   delegated to them, since neither command currently accepts a title or
   description to change.
 - **The project's existing design vocabulary is plain text.** There is no
-  prior UI, no CSS, no frontend tooling and no design file to extend —
-  "Claude's own product" is the reference to build the visual language from,
-  translated into a static, offline, dependency-free page.
+  prior UI, no CSS and no frontend tooling in the repository — the canvas
+  described above is the only design source, and it has to be translated into
+  a static, offline, dependency-free page rather than referenced live.
 
 ## Goals / Non-Goals
 
@@ -52,9 +72,20 @@ properties of the existing code and of what the binary promises today:
 
 - No task deletion from the UI. `rm` stays the only way, as argued in
   proposal.md.
-- No board, no drag-and-drop, no multi-task/bulk actions. The list groups by
-  status for orientation; moving a task between groups happens through the
-  edit panel like any other field change, not by dragging a card.
+- No drag-and-drop, no multi-task/bulk actions. The board view (artboard
+  `1a`) is a second way to *look at* the same filtered list, one column per
+  status; moving a task between columns happens through the edit dialog like
+  any other field change, never by dragging a card.
+- No bespoke mobile screens beyond a responsive baseline built on the same
+  tokens: the canvas's "mobile, reworked" flow (section 3 — a split
+  write/preview editor, a dedicated decline bottom sheet, a `···` overflow
+  menu) is a further exploration the canvas itself did not commit to
+  (see Context), and is left for a later change. `1b`'s simpler mobile list
+  and read-only detail sheet describes the baseline this change targets.
+- No manual light/dark toggle. The palette follows `prefers-color-scheme`
+  automatically, per section 2 of the canvas, applied as an automatic media
+  query rather than the manually-switched illustration the canvas shows it
+  as.
 - No authentication, no HTTPS, no CSRF protection. The trust boundary is the
   same one the CLI already has — whoever can run `backlog` already has full
   read/write access to `.backlog/` on disk — and is discussed under Decisions.
@@ -63,9 +94,6 @@ properties of the existing code and of what the binary promises today:
   substring-only spirit as `search` but not calling into `internal/search` or
   exposing its ranking; a person who needs `search`'s regex mode or its
   declined-always-in-scope behaviour still reaches for the CLI.
-- No manual light/dark toggle. The palette follows `prefers-color-scheme`
-  automatically; a toggle is a reasonable future addition, not part of this
-  change.
 - No live updates (polling or websockets) when the backlog changes on disk
   from elsewhere (an agent running `backlog add` concurrently, a hand edit).
   The list reflects what was loaded when the page opened or last refreshed
@@ -160,30 +188,124 @@ Rejected — a person filling in a web form is definitionally a human; the field
 exists to distinguish agent captures from person captures, and a selector
 would just be a way to lie about which one this is.
 
-### Visual design: a small token set translated for offline use
+### Visual design: the canvas's tokens, verbatim, self-hosting the one font
 
-Claude's product identity is read as a small set of tokens rather than copied
-asset-for-asset, since no font files or icon sets are available offline:
+The canvas's own `styles.css` is the specification, not a mood board — its
+`:root` custom properties and component classes are ported into
+`internal/browse/web/style.css` unchanged in value, with only the font's
+source changed for offline use:
 
-- **Type:** a serif stack (`ui-serif, Georgia, "Times New Roman", serif`) for
-  headings, standing in for Claude's display serif; the system sans stack
-  (`-apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif`) for
-  everything else. No `@font-face`, no Google Fonts link.
-- **Colour:** a warm paper background and dark warm-grey ink rather than pure
-  white/black, and the signature terracotta as the one accent — primary
-  buttons, focus rings, the high-priority indicator — used sparingly so it
-  still reads as an accent once every status and priority also has a colour.
-- **Shape:** generously rounded corners (12–16px) on cards and the edit panel,
-  1px warm-grey borders instead of drop shadows as the primary way surfaces
-  separate from the page, consistent with a calm, paper-like feel rather than
-  a conventional dashboard's card shadows.
-- **Dark mode:** a parallel dark palette (dark warm ink background, warm
-  off-white text, the same terracotta accent) behind
-  `prefers-color-scheme: dark`, applied automatically.
+- **Type — Archivo, self-hosted.** `--font-heading` and `--font-body` are
+  both `"Archivo", system-ui, sans-serif`, heading weight 800, body 400/600.
+  The canvas's stylesheet pulls it from Google Fonts
+  (`@import url('https://fonts.googleapis.com/css2?family=Archivo…')`); this
+  change instead vendors the OFL-licensed Archivo variable font into
+  `internal/browse/web/fonts/` and declares it with a local `@font-face`, so
+  the page needs no network access — the one substantive deviation from the
+  canvas file, made for the offline constraint above, not a stylistic choice.
+  Heading sizes follow the canvas scale: h1 42px down to h6 13px (uppercase,
+  tracked), line-height 1.12, letter-spacing −0.015em.
+- **Colour — one accent, tonal ramps, real values.** Light ground
+  `--color-bg` `#f3f2f2`, surface `--color-surface` `#eae9e9`, ink text
+  `--color-text` `#201e1d`, and a single accent `--color-accent` `#ec3013` — a
+  saturated red-orange, not Claude's own palette. It is a mono scheme (the
+  canvas's `--color-accent-2-*` ramp is a machine-derived stand-in kept only
+  so both resolve; treat it as the same role as `--color-accent-*`). Each
+  role carries a 100–900 OKLCH tonal ramp; light steps (100–300) tint fills
+  and hovers, 500 is the base, dark steps (700–900) sit on tinted fills and
+  mark pressed/selected states. Priority reuses these ramps rather than
+  inventing new colours: `high` is `.tag-outline` (accent border and text),
+  `medium` is `.tag-accent` (`--color-accent-100` fill, `--color-accent-800`
+  text), `low` is `.tag-neutral`.
+- **Shape — zero radius, everywhere, on purpose.** `--radius-sm/md/lg` are
+  all `0px`; the canvas's `readme.md` states this as a rule ("do not round a
+  corner anywhere"), which rules out the rounded-card look this design.md
+  described before the canvas was supplied. Separation between surfaces comes
+  from strong 1–2px ink rules (`--color-divider`, a 40%-opacity mix of the
+  text colour) far more than from the `--shadow-sm/md/lg` tokens, which are
+  reserved for genuinely floating surfaces — the detail dialog's backdrop, the
+  "browser frame" treatment around a whole screen.
+- **Components — the canvas's own classes, not new ones.** `.btn` /
+  `.btn-primary` / `.btn-secondary` / `.btn-icon`; `.tag` /
+  `.tag-accent` / `.tag-neutral` / `.tag-outline`; `.field` + `.input`,
+  `.seg` + `.seg-opt` (the segmented control used for LIST/BOARD and for
+  status/priority in the edit form); `.table`; `.dialog-backdrop` + `.dialog`.
+  `internal/browse/web/style.css` carries these classes forward from the
+  export rather than re-deriving equivalents, so a future retouch of the
+  canvas's tokens can be re-ported by diffing one file.
+- **Dark mode — the canvas's section 2 values, applied automatically.** The
+  same structure inverted: ground `#201e1d`, rules and text in `#f3f2f2`,
+  the accent held at full strength for priority and the primary action, and
+  `--color-accent-400` (`#ff9783`) wherever the accent has to carry running
+  text on the dark ground, exactly as the canvas's own dark artboards use it.
+  Behind `prefers-color-scheme: dark`, not a manually-switched illustration.
+- **Icons — Lucide, inline SVG, `currentColor`.** Matches what is already
+  inline in the canvas's markup (search, plus, edit-pencil, save, archive,
+  close); no icon font, no external icon request.
 
-These are implemented as CSS custom properties in one stylesheet, so the two
-palettes are two blocks of variable definitions rather than two copies of
-every rule.
+### Screen architecture matches artboard `1a`/`1b`, not a fresh layout
+
+The canvas's interactive prototype is implemented close to structurally
+as-is, because it already answers the layout questions a UI like this raises
+and answering them differently would be a second, unreviewed design:
+
+- **Top bar:** wordmark + version, a repo/branch chip (`weldnor/backlog /
+  .backlog · main`, read from git the way `add`'s provenance already is),
+  the free-text filter input, the LIST/BOARD `.seg` toggle, and the primary
+  `CAPTURE` button that opens the create dialog.
+- **Left sidebar (232px):** three filter groups over `.field`-style
+  buttons — STATUS and PRIORITY each list every value with a live count and
+  toggle on click (clicking the active one clears it, matching `pick()` in
+  the prototype), TAGS is a chip cloud of every tag currently in use.
+  Multiple groups combine as a conjunction, matching `scope.apply`; within a
+  group only one value is selected at a time in this first version, which is
+  narrower than the CLI's repeatable `--tag`/`--priority` but matches what
+  the canvas actually renders (a single active filter per group, not a
+  multi-select list) — expanding a sidebar group to multi-select is a natural
+  follow-up, not part of this change.
+- **Result bar:** a count and the fixed order note ("descending priority,
+  then ascending identifier"), a "Show archive · --all" toggle, and — a
+  detail worth keeping, not decoration — the equivalent CLI invocation for
+  the current view (`backlog list --tag bug`, `backlog list --json`) printed
+  in monospace. It costs one string per view and keeps the UI honest that it
+  is the same store and the same commands, not a parallel system.
+- **List view:** one `.table`, columns ID / Priority / Title (with its
+  source file path as a second line) / Tags / Status.
+- **Board view:** four columns, fixed order `todo`/`doing`/`done`/`declined`,
+  each a header with a live count and a stack of cards; an empty column shows
+  a one-line explanatory note rather than nothing (the canvas's own copy —
+  "Archive — acted on. Behind `--all`.", "Always in scope for `search` — a
+  duplicate must not hide behind a filter." — is worth keeping verbatim,
+  since it is teaching the same distinctions the README does).
+- **Detail dialog:** opened by clicking any row or card, `840px`, two panes.
+  The left pane defaults to a **read view** — priority tag, status, title,
+  rendered markdown body, and a decline-reason callout when applicable — with
+  an `Edit` toggle in the dialog header that switches the same pane to the
+  **edit form**: title input, a status `.seg` (four options), a priority
+  `.seg` (three), a tags input, a reason input that appears only while the
+  selected status is `declined` (mirroring the `needsReason` binding in the
+  prototype), and the description as a plain textarea — raw markdown, no
+  split source/preview pane; that richer editor is section 2b's exploration,
+  left for later per the Non-Goals. The right pane (264px) is the read-only
+  metadata sidebar — identifier, created timestamp, author, branch/commit,
+  source files, refs — with the canvas's own explanation of why it is
+  read-only ("the key set under `metadata` is closed... this panel is
+  read-only for that reason"), which doubles as user-facing documentation of
+  a rule this project already enforces server-side.
+- **Create dialog:** the canvas's working prototype wires `CAPTURE` to open
+  the dialog with no task selected, but does not finish rendering a blank
+  form in that state — the one gap in an otherwise complete interactive
+  spec. This change fills it the only way consistent with everything else
+  the prototype does: the same edit-form layout, opened directly (no read
+  view to toggle from), fields blank except `status: todo` and
+  `priority: medium`, and `Save` calling `POST /api/tasks` instead of
+  `PATCH /api/tasks/{id}`.
+- **Mobile (`1b`, ≤480px):** the sidebar collapses and the top bar's search
+  and view toggle stack under the wordmark; the list becomes the single
+  full-width column the canvas draws, and tapping a task opens the same
+  detail dialog full-screen rather than the desktop's centred overlay. The
+  board view and its column layout are not adapted for mobile in this change
+  — a person on a phone gets the list.
 
 ### Graceful shutdown, not a bare `ListenAndServe`
 
@@ -213,6 +335,20 @@ and `backlog browse` exits 0 rather than being killed mid-request.
   Accepted for this change given the no-build-step constraint; if `browse`
   grows enough to need real client-side state management, that is a decision
   for the change that needs it, not one to pre-pay for here.
+- **Vendoring the Archivo font changes what the canvas actually renders**
+  (a Google Fonts request) rather than reproducing it byte-for-byte. → Archivo
+  is SIL Open Font License 1.1, which permits bundling and redistribution;
+  the OFL text is vendored alongside the font files. The rendered typeface is
+  unchanged, only its source is, which is the offline constraint's cost, made
+  explicit here rather than silently reverting to a system font.
+- **Two sections of the supplied canvas (dark-ground detail, "mobile,
+  reworked") were read as exploratory rather than committed**, which is a
+  judgement call this change made rather than one the user confirmed
+  artboard-by-artboard. → The canvas's own `github.md` screen map supports it
+  (only `1a`/`1b` are listed as built from the repo), and dark mode's *values*
+  from section 2 are still used, just applied automatically instead of as the
+  manual toggle the illustration shows. If this reading is wrong, it is easy
+  to correct in an update to this change before implementation starts.
 
 ## Migration Plan
 
