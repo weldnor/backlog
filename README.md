@@ -376,3 +376,21 @@ is skipped, and only `backlog init --force` replaces it.
 go build ./...
 go test ./...
 ```
+
+Building or installing the binary needs only the Go toolchain — the `browse`
+web UI ships pre-built and embedded, so `go build` and
+`go install github.com/weldnor/backlog@latest` never touch Node.
+
+Working on the `browse` UI itself does need Node (the version is pinned in
+`frontend/.nvmrc`). The React + TypeScript source lives in `frontend/`; the
+compiled bundle is committed under `internal/browse/web/` and embedded with
+`go:embed`. After changing anything in `frontend/`, regenerate the bundle and
+commit the result:
+
+```
+just build-web        # cd frontend && npm ci && npm run build
+```
+
+CI rebuilds the bundle from source and fails if the committed output under
+`internal/browse/web/` is not in sync, so a stale bundle cannot land on the
+default branch.
