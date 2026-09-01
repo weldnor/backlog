@@ -35,13 +35,9 @@ func newBacklog(t *testing.T) *store.Store {
 	return st
 }
 
-func writeTask(t *testing.T, st *store.Store, archived bool, name, content string) string {
+func writeTask(t *testing.T, st *store.Store, name, content string) string {
 	t.Helper()
-	dir := st.TasksPath()
-	if archived {
-		dir = st.ArchivePath()
-	}
-	path := filepath.Join(dir, name)
+	path := filepath.Join(st.TasksPath(), name)
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -85,7 +81,7 @@ func messages(report *Report) []string {
 
 func TestCleanBacklog(t *testing.T) {
 	st := newBacklog(t)
-	writeTask(t, st, false, "001-a-clean-task.md", clean)
+	writeTask(t, st, "001-a-clean-task.md", clean)
 
 	report := run(t, st, Options{})
 	if !report.OK() || report.Errors != 0 || report.Warnings != 0 {
@@ -97,7 +93,7 @@ func TestWarningsDoNotFailUnlessStrict(t *testing.T) {
 	st := newBacklog(t)
 	// An unknown top-level field is author-owned territory: a warning, not an
 	// error.
-	writeTask(t, st, false, "001-a-clean-task.md", strings.Replace(clean, "status: todo", "status: todo\nowner: someone", 1))
+	writeTask(t, st, "001-a-clean-task.md", strings.Replace(clean, "status: todo", "status: todo\nowner: someone", 1))
 
 	report := run(t, st, Options{})
 	if !report.OK() {
@@ -122,8 +118,8 @@ func TestWarningsDoNotFailUnlessStrict(t *testing.T) {
 
 func TestErrorAndWarningReportedTogether(t *testing.T) {
 	st := newBacklog(t)
-	writeTask(t, st, false, "001-not-valid.md", "not a task file at all\n")
-	writeTask(t, st, false, "002-drifted-name.md", strings.Replace(
+	writeTask(t, st, "001-not-valid.md", "not a task file at all\n")
+	writeTask(t, st, "002-drifted-name.md", strings.Replace(
 		strings.Replace(clean, "id: 1", "id: 2", 1), "title: A clean task", "title: A different title", 1))
 
 	report := run(t, st, Options{})
@@ -139,13 +135,13 @@ func TestErrorAndWarningReportedTogether(t *testing.T) {
 }
 
 func TestStructuralChecks(t *testing.T) {
-	t.Run("missing archive directory", func(t *testing.T) {
+	t.Run("missing task directory", func(t *testing.T) {
 		st := newBacklog(t)
-		if err := os.Remove(st.ArchivePath()); err != nil {
+		if err := os.Remove(st.TasksPath()); err != nil {
 			t.Fatal(err)
 		}
 		report := run(t, st, Options{})
-		f := mustFind(t, report, "archive directory is missing")
+		f := mustFind(t, report, "tasks directory is missing")
 		if f.Severity != "error" {
 			t.Errorf("severity = %q, want error", f.Severity)
 		}
@@ -153,7 +149,7 @@ func TestStructuralChecks(t *testing.T) {
 
 	t.Run("stray file among the tasks", func(t *testing.T) {
 		st := newBacklog(t)
-		writeTask(t, st, false, "notes.txt", "scratch\n")
+		writeTask(t, st, "notes.txt", "scratch\n")
 		report := run(t, st, Options{})
 		f := mustFind(t, report, "not a task file")
 		if !strings.HasSuffix(f.File, "notes.txt") {
@@ -245,7 +241,7 @@ func TestPerFileChecks(t *testing.T) {
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			st := newBacklog(t)
-			writeTask(t, st, false, c.file, c.content)
+			writeTask(t, st, c.file, c.content)
 			report := run(t, st, Options{})
 			f := mustFind(t, report, c.message)
 			if f.Severity != c.severity {
@@ -261,8 +257,8 @@ func TestPerFileChecks(t *testing.T) {
 func TestCrossFileChecks(t *testing.T) {
 	t.Run("duplicate identifier", func(t *testing.T) {
 		st := newBacklog(t)
-		writeTask(t, st, false, "001-a-clean-task.md", clean)
-		writeTask(t, st, false, "001-a-copy.md", strings.Replace(clean, "title: A clean task", "title: A copy", 1))
+		writeTask(t, st, "001-a-clean-task.md", clean)
+		writeTask(t, st, "001-a-copy.md", strings.Replace(clean, "title: A clean task", "title: A copy", 1))
 
 		report := run(t, st, Options{})
 		var named int
@@ -282,7 +278,7 @@ func TestCrossFileChecks(t *testing.T) {
 
 	t.Run("slug drifted from the title", func(t *testing.T) {
 		st := newBacklog(t)
-		writeTask(t, st, false, "001-the-old-title.md", clean)
+		writeTask(t, st, "001-the-old-title.md", clean)
 		report := run(t, st, Options{})
 		f := mustFind(t, report, "no longer matches the title")
 		if f.Severity != "warning" || !f.Repairable {
@@ -290,30 +286,22 @@ func TestCrossFileChecks(t *testing.T) {
 		}
 	})
 
-	t.Run("done task left among the active tasks", func(t *testing.T) {
+	t.Run("a terminal task is not misplaced", func(t *testing.T) {
 		st := newBacklog(t)
-		writeTask(t, st, false, "001-a-clean-task.md", strings.Replace(clean, "status: todo", "status: done", 1))
+		writeTask(t, st, "001-a-clean-task.md", strings.Replace(clean, "status: todo", "status: done", 1))
+		writeTask(t, st, "002-a-clean-task.md", strings.Replace(
+			strings.Replace(clean, "id: 1", "id: 2", 1),
+			"status: todo", "status: declined\nreason: not worth the churn", 1))
 		report := run(t, st, Options{})
-		f := mustFind(t, report, "status is done but the file is not in archive")
-		if f.Severity != "warning" || !f.Repairable {
-			t.Errorf("finding = %+v, want a repairable warning", f)
-		}
-	})
-
-	t.Run("active task sitting in the archive", func(t *testing.T) {
-		st := newBacklog(t)
-		writeTask(t, st, true, "001-a-clean-task.md", clean)
-		report := run(t, st, Options{})
-		f := mustFind(t, report, "status is todo but the file is in archive")
-		if f.Severity != "warning" || !f.Repairable {
-			t.Errorf("finding = %+v, want a repairable warning", f)
+		if !report.OK() || report.Errors != 0 || report.Warnings != 0 {
+			t.Errorf("a done or declined task in .backlog/tasks/ must not be flagged: %v", messages(report))
 		}
 	})
 }
 
 func TestReferencesAreCheckedButNotResolved(t *testing.T) {
 	st := newBacklog(t)
-	writeTask(t, st, false, "001-a-clean-task.md", strings.Replace(clean,
+	writeTask(t, st, "001-a-clean-task.md", strings.Replace(clean,
 		"  refs: []", "  refs:\n    - openspec:add-auth\n    - https://example.invalid/issues/9\n    - anything at all", 1))
 
 	report := run(t, st, Options{})
@@ -322,7 +310,7 @@ func TestReferencesAreCheckedButNotResolved(t *testing.T) {
 	}
 
 	st2 := newBacklog(t)
-	writeTask(t, st2, false, "001-a-clean-task.md", strings.Replace(clean,
+	writeTask(t, st2, "001-a-clean-task.md", strings.Replace(clean,
 		"  refs: []", "  refs:\n    - \"\"", 1))
 	report2 := run(t, st2, Options{})
 	f := mustFind(t, report2, "empty reference")
@@ -333,7 +321,7 @@ func TestReferencesAreCheckedButNotResolved(t *testing.T) {
 
 func TestFixIsOptIn(t *testing.T) {
 	st := newBacklog(t)
-	path := writeTask(t, st, false, "001-the-old-title.md", clean)
+	path := writeTask(t, st, "001-the-old-title.md", clean)
 	before, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
@@ -355,7 +343,7 @@ func TestFixIsOptIn(t *testing.T) {
 func TestFixRepairsTheUnambiguousFindings(t *testing.T) {
 	t.Run("renames a drifted file name", func(t *testing.T) {
 		st := newBacklog(t)
-		writeTask(t, st, false, "001-the-old-title.md", clean)
+		writeTask(t, st, "001-the-old-title.md", clean)
 
 		report := run(t, st, Options{Fix: true})
 		if _, err := os.Stat(filepath.Join(st.TasksPath(), "001-a-clean-task.md")); err != nil {
@@ -372,19 +360,22 @@ func TestFixRepairsTheUnambiguousFindings(t *testing.T) {
 		}
 	})
 
-	t.Run("moves a task to the directory its status requires", func(t *testing.T) {
+	t.Run("does not move a task on account of its status", func(t *testing.T) {
 		st := newBacklog(t)
-		writeTask(t, st, false, "001-a-clean-task.md", strings.Replace(clean, "status: todo", "status: done", 1))
+		writeTask(t, st, "001-a-clean-task.md", strings.Replace(clean, "status: todo", "status: done", 1))
 
-		run(t, st, Options{Fix: true})
-		if _, err := os.Stat(filepath.Join(st.ArchivePath(), "001-a-clean-task.md")); err != nil {
-			t.Fatalf("the task was not moved to the archive: %v", err)
+		report := run(t, st, Options{Fix: true})
+		if _, err := os.Stat(filepath.Join(st.TasksPath(), "001-a-clean-task.md")); err != nil {
+			t.Fatalf("the done task was moved out of .backlog/tasks/: %v", err)
+		}
+		if len(report.Repairs) != 0 {
+			t.Errorf("a status change should not trigger a repair: %v", report.Repairs)
 		}
 	})
 
 	t.Run("adds a missing format version", func(t *testing.T) {
 		st := newBacklog(t)
-		path := writeTask(t, st, false, "001-a-clean-task.md", strings.Replace(clean, "  schema: 1\n", "", 1))
+		path := writeTask(t, st, "001-a-clean-task.md", strings.Replace(clean, "  schema: 1\n", "", 1))
 
 		run(t, st, Options{Fix: true})
 		if got := readFile(t, path); !strings.Contains(got, "schema: 1") {
@@ -394,7 +385,7 @@ func TestFixRepairsTheUnambiguousFindings(t *testing.T) {
 
 	t.Run("normalises timestamp formatting", func(t *testing.T) {
 		st := newBacklog(t)
-		path := writeTask(t, st, false, "001-a-clean-task.md",
+		path := writeTask(t, st, "001-a-clean-task.md",
 			strings.Replace(clean, "created: 2026-08-30T20:59:51Z", "created: 2026-08-30 20:59:51", 1))
 
 		run(t, st, Options{Fix: true})
@@ -405,7 +396,7 @@ func TestFixRepairsTheUnambiguousFindings(t *testing.T) {
 
 	t.Run("de-duplicates tags", func(t *testing.T) {
 		st := newBacklog(t)
-		path := writeTask(t, st, false, "001-a-clean-task.md",
+		path := writeTask(t, st, "001-a-clean-task.md",
 			strings.Replace(clean, "  - bug\n", "  - bug\n  - bug\n", 1))
 
 		run(t, st, Options{Fix: true})
@@ -421,8 +412,8 @@ func TestFixLeavesAmbiguousFindingsAlone(t *testing.T) {
 		st := newBacklog(t)
 		// Both also have drifted names, so a repair would be visible if one
 		// were attempted.
-		a := writeTask(t, st, false, "001-old-name-one.md", clean)
-		b := writeTask(t, st, false, "001-old-name-two.md", strings.Replace(clean, "title: A clean task", "title: A copy", 1))
+		a := writeTask(t, st, "001-old-name-one.md", clean)
+		b := writeTask(t, st, "001-old-name-two.md", strings.Replace(clean, "title: A clean task", "title: A copy", 1))
 		beforeA, beforeB := readFile(t, a), readFile(t, b)
 
 		report := run(t, st, Options{Fix: true})
@@ -436,7 +427,7 @@ func TestFixLeavesAmbiguousFindingsAlone(t *testing.T) {
 
 	t.Run("unparseable frontmatter", func(t *testing.T) {
 		st := newBacklog(t)
-		path := writeTask(t, st, false, "001-broken.md", "---\nid: 1\ntitle: [unclosed\n---\n")
+		path := writeTask(t, st, "001-broken.md", "---\nid: 1\ntitle: [unclosed\n---\n")
 		before := readFile(t, path)
 
 		report := run(t, st, Options{Fix: true})
@@ -450,7 +441,7 @@ func TestFixLeavesAmbiguousFindingsAlone(t *testing.T) {
 
 	t.Run("an invalid status blocks repair of the same file", func(t *testing.T) {
 		st := newBacklog(t)
-		path := writeTask(t, st, false, "001-old-name.md", strings.Replace(clean, "status: todo", "status: blocked", 1))
+		path := writeTask(t, st, "001-old-name.md", strings.Replace(clean, "status: todo", "status: blocked", 1))
 		before := readFile(t, path)
 
 		run(t, st, Options{Fix: true})
@@ -462,8 +453,8 @@ func TestFixLeavesAmbiguousFindingsAlone(t *testing.T) {
 
 func TestFindingsAreGroupedByFile(t *testing.T) {
 	st := newBacklog(t)
-	writeTask(t, st, false, "002-b.md", "---\nid: 2\ntitle: b\nstatus: nope\ntags: []\n---\n")
-	writeTask(t, st, false, "001-a.md", "---\nid: 1\ntitle: a\nstatus: nope\ntags: []\n---\n")
+	writeTask(t, st, "002-b.md", "---\nid: 2\ntitle: b\nstatus: nope\ntags: []\n---\n")
+	writeTask(t, st, "001-a.md", "---\nid: 1\ntitle: a\nstatus: nope\ntags: []\n---\n")
 
 	report := run(t, st, Options{})
 	seen := map[string]bool{}
@@ -531,7 +522,7 @@ func TestPriorityChecks(t *testing.T) {
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			st := newBacklog(t)
-			writeTask(t, st, false, "001-a-clean-task.md", c.content)
+			writeTask(t, st, "001-a-clean-task.md", c.content)
 
 			report := run(t, st, Options{})
 			f := mustFind(t, report, c.message)
@@ -555,7 +546,7 @@ func TestPriorityChecks(t *testing.T) {
 
 func TestFixAddsAMissingPriority(t *testing.T) {
 	st := newBacklog(t)
-	path := writeTask(t, st, false, "001-a-clean-task.md", strings.Replace(clean, "priority: high\n", "", 1))
+	path := writeTask(t, st, "001-a-clean-task.md", strings.Replace(clean, "priority: high\n", "", 1))
 
 	report := run(t, st, Options{Fix: true})
 	got := readFile(t, path)
@@ -578,7 +569,7 @@ func TestFixAddsAMissingPriority(t *testing.T) {
 func TestFixLeavesAnUnrecognisedPriorityAlone(t *testing.T) {
 	st := newBacklog(t)
 	content := strings.Replace(clean, "priority: high", "priority: urgent", 1)
-	path := writeTask(t, st, false, "001-a-clean-task.md", content)
+	path := writeTask(t, st, "001-a-clean-task.md", content)
 
 	report := run(t, st, Options{Fix: true})
 	got := readFile(t, path)
@@ -621,7 +612,7 @@ func TestReasonChecks(t *testing.T) {
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			st := newBacklog(t)
-			writeTask(t, st, true, "001-a-clean-task.md", c.content)
+			writeTask(t, st, "001-a-clean-task.md", c.content)
 
 			report := run(t, st, Options{})
 			f := mustFind(t, report, c.message)
@@ -641,7 +632,7 @@ func TestReasonChecks(t *testing.T) {
 
 	t.Run("a declined task with a reason is clean", func(t *testing.T) {
 		st := newBacklog(t)
-		writeTask(t, st, true, "001-a-clean-task.md",
+		writeTask(t, st, "001-a-clean-task.md",
 			strings.Replace(declined, "priority: high", "priority: high\nreason: the cost outweighs the benefit", 1))
 
 		report := run(t, st, Options{})
@@ -651,37 +642,15 @@ func TestReasonChecks(t *testing.T) {
 	})
 }
 
-func TestDeclinedTaskLeftAmongTheActiveTasks(t *testing.T) {
+func TestDeclinedTaskInTasksIsNotFlagged(t *testing.T) {
 	st := newBacklog(t)
-	writeTask(t, st, false, "001-a-clean-task.md", strings.Replace(
+	writeTask(t, st, "001-a-clean-task.md", strings.Replace(
 		strings.Replace(clean, "status: todo", "status: declined", 1),
 		"priority: high", "priority: high\nreason: not worth the churn", 1))
 
 	report := run(t, st, Options{})
-	f := mustFind(t, report, "status is declined but the file is not in archive")
-	if f.Severity != "warning" || !f.Repairable {
-		t.Errorf("finding = %+v, want a repairable warning", f)
-	}
-}
-
-func TestFixMovesADeclinedTaskToTheArchive(t *testing.T) {
-	st := newBacklog(t)
-	writeTask(t, st, false, "001-a-clean-task.md", strings.Replace(
-		strings.Replace(clean, "status: todo", "status: declined", 1),
-		"priority: high", "priority: high\nreason: not worth the churn", 1))
-
-	report := run(t, st, Options{Fix: true})
-	if _, err := os.Stat(filepath.Join(st.ArchivePath(), "001-a-clean-task.md")); err != nil {
-		t.Errorf("the declined task was not moved to the archive: %v", err)
-	}
-	if _, err := os.Stat(filepath.Join(st.TasksPath(), "001-a-clean-task.md")); !os.IsNotExist(err) {
-		t.Error("the declined task was left behind among the active tasks")
-	}
-	if len(report.Repairs) == 0 {
-		t.Error("the move was not reported")
-	}
-	if !report.OK() || report.Warnings != 0 {
-		t.Errorf("the finding survived the repair: %v", messages(report))
+	if !report.OK() || report.Errors != 0 || report.Warnings != 0 {
+		t.Errorf("a declined task in .backlog/tasks/ must not be flagged: %v", messages(report))
 	}
 }
 
@@ -689,7 +658,7 @@ func TestFixLeavesTheReasonPairingAlone(t *testing.T) {
 	t.Run("does not invent a reason", func(t *testing.T) {
 		st := newBacklog(t)
 		content := strings.Replace(clean, "status: todo", "status: declined", 1)
-		path := writeTask(t, st, true, "001-a-clean-task.md", content)
+		path := writeTask(t, st, "001-a-clean-task.md", content)
 
 		report := run(t, st, Options{Fix: true})
 		if got := readFile(t, path); got != content {
@@ -703,7 +672,7 @@ func TestFixLeavesTheReasonPairingAlone(t *testing.T) {
 	t.Run("does not delete a misplaced reason", func(t *testing.T) {
 		st := newBacklog(t)
 		content := strings.Replace(clean, "priority: high", "priority: high\nreason: not worth it", 1)
-		path := writeTask(t, st, false, "001-a-clean-task.md", content)
+		path := writeTask(t, st, "001-a-clean-task.md", content)
 
 		report := run(t, st, Options{Fix: true})
 		got := readFile(t, path)

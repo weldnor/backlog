@@ -28,7 +28,6 @@ interface State {
   status: string | null;
   priority: string | null;
   tag: string | null;
-  archive: boolean;
   dialogMode: DialogMode | null;
   openTask: TaskView | null;
   error: string;
@@ -38,7 +37,6 @@ type Action =
   | { type: "set_view"; view: View }
   | { type: "set_query"; query: string }
   | { type: "toggle_filter"; key: FilterKey; value: string }
-  | { type: "toggle_archive" }
   | { type: "open_read"; task: TaskView }
   | { type: "open_create" }
   | { type: "enter_edit" }
@@ -53,7 +51,6 @@ const initialState: State = {
   status: null,
   priority: null,
   tag: null,
-  archive: false,
   dialogMode: null,
   openTask: null,
   error: "",
@@ -71,10 +68,6 @@ function reducer(state: State, action: Action): State {
         [action.key]:
           state[action.key] === action.value ? null : action.value,
       };
-    case "toggle_archive":
-      // Turning the archive on drops an explicit status filter, matching the
-      // old UI: the two are mutually exclusive server-side.
-      return { ...state, archive: !state.archive, status: null };
     case "open_read":
       return {
         ...state,
@@ -108,12 +101,13 @@ function reducer(state: State, action: Action): State {
 }
 
 // currentCommand renders the live `backlog list …` invocation the current
-// filters map to, matching the old currentCommand().
+// filters map to. The UI always shows every status, so the base command is
+// `backlog list --all` unless an explicit status filter narrows it.
 function currentCommand(state: State): string {
   const parts = ["backlog", "list"];
   if (state.status) {
     parts.push("--status", state.status);
-  } else if (state.archive) {
+  } else {
     parts.push("--all");
   }
   if (state.priority) parts.push("--priority", state.priority);
@@ -134,7 +128,6 @@ export function App() {
     status: state.status,
     priority: state.priority,
     tag: state.tag,
-    archive: state.archive,
   });
 
   useEffect(() => {
@@ -186,6 +179,26 @@ export function App() {
       .catch((err) => dispatch({ type: "set_error", error: message(err) }));
   }
 
+  // handleMove applies a board drag-and-drop: it performs the same status edit
+  // the dialog performs, independent of whichever task the dialog has open.
+  function handleMove(id: number, status: string) {
+    const t = all.find((x) => x.id === id);
+    if (!t || t.status === status) return;
+    let body: PatchTaskBody;
+    if (status === "declined") {
+      // The reason is required exactly when the resulting status is `declined`,
+      // mirroring the edit form; a cancelled or blank prompt leaves the task be.
+      const reason = window.prompt("Reason for declining this task?");
+      if (reason === null || reason.trim() === "") return;
+      body = { status, reason };
+    } else {
+      body = { status };
+    }
+    patchTask(id, body)
+      .then(() => refresh())
+      .catch((err) => dispatch({ type: "set_error", error: message(err) }));
+  }
+
   const openId =
     state.dialogMode === "read" || state.dialogMode === "edit"
       ? (state.openTask?.id ?? null)
@@ -217,15 +230,13 @@ export function App() {
           <ResultBar
             count={filtered.length}
             command={currentCommand(state)}
-            archive={state.archive}
-            onToggleArchive={() => dispatch({ type: "toggle_archive" })}
           />
 
           <div id="listView" hidden={state.view !== "list"}>
             <ListView tasks={filtered} openId={openId} onOpen={openTask} />
           </div>
           <div className="board" id="boardView" hidden={state.view !== "board"}>
-            <BoardView tasks={filtered} onOpen={openTask} />
+            <BoardView tasks={filtered} onOpen={openTask} onMove={handleMove} />
           </div>
         </main>
       </div>

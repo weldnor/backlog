@@ -130,7 +130,7 @@ type taskJSON struct {
 
 // The whole point of the tool, start to finish: an agent captures a finding
 // mid-task, someone finds it again later, works it, and closes it out.
-func TestCaptureToArchive(t *testing.T) {
+func TestCaptureThroughToDone(t *testing.T) {
 	dir := gitProject(t)
 
 	mustBacklog(t, dir, "init")
@@ -177,18 +177,22 @@ func TestCaptureToArchive(t *testing.T) {
 	// Work starts.
 	mustBacklog(t, dir, "set", "1", "doing")
 	if _, err := os.Stat(filepath.Join(dir, ".backlog", "tasks", "001-race-in-session-cache.md")); err != nil {
-		t.Errorf("a task in progress left the active directory: %v", err)
+		t.Errorf("a task in progress left the tasks directory: %v", err)
 	}
 
 	// Work finishes, with a link back to wherever it was done.
 	mustBacklog(t, dir, "set", "1", "done", "--ref", "change:fix-session-cache")
-	if _, err := os.Stat(filepath.Join(dir, ".backlog", "archive", "001-race-in-session-cache.md")); err != nil {
-		t.Fatalf("the finished task is not in the archive: %v", err)
+	if _, err := os.Stat(filepath.Join(dir, ".backlog", "tasks", "001-race-in-session-cache.md")); err != nil {
+		t.Fatalf("a done task left the tasks directory: %v", err)
 	}
 
-	// It is out of the default listing but still readable by identifier.
-	if out := mustBacklog(t, dir, "list"); strings.Contains(out, "Race in session cache") {
-		t.Errorf("an archived task still appears in the default listing:\n%s", out)
+	// It is still in the default listing — every status is shown — and readable
+	// by identifier.
+	if out := mustBacklog(t, dir, "list"); !strings.Contains(out, "Race in session cache") {
+		t.Errorf("a done task is missing from the default listing:\n%s", out)
+	}
+	if out := mustBacklog(t, dir, "list", "todo"); strings.Contains(out, "Race in session cache") {
+		t.Errorf("a done task appears under `list todo`:\n%s", out)
 	}
 	var done taskJSON
 	unmarshal(t, mustBacklog(t, dir, "show", "1", "--json"), &done)
@@ -316,7 +320,7 @@ func TestParallelProcessesGetDistinctIdentifiers(t *testing.T) {
 	wg.Wait()
 
 	var tasks []taskJSON
-	unmarshal(t, mustBacklog(t, dir, "list", "--all", "--json"), &tasks)
+	unmarshal(t, mustBacklog(t, dir, "list", "--json"), &tasks)
 	if len(tasks) != n {
 		t.Fatalf("got %d tasks, want %d — a write was lost", len(tasks), n)
 	}
@@ -554,22 +558,19 @@ func TestDeclineThroughTheLifecycle(t *testing.T) {
 		t.Errorf("status = %q, want declined", declined.Status)
 	}
 
-	// Declined is terminal, so the file lives in the archive and carries the
-	// reasoning with it.
-	archived := filepath.Join(dir, ".backlog", "archive", "001-race-in-session-cache.md")
-	onDisk := read(t, archived)
+	// A status change never moves the file: the declined task stays in
+	// .backlog/tasks/ and carries the reasoning with it.
+	taskFile := filepath.Join(dir, ".backlog", "tasks", "001-race-in-session-cache.md")
+	onDisk := read(t, taskFile)
 	if !strings.Contains(onDisk, "status: declined") {
 		t.Errorf("the file does not declare the status:\n%s", onDisk)
 	}
 	if !strings.Contains(onDisk, "reason: the cache has a single writer; the race cannot happen") {
 		t.Errorf("the file does not carry the reason:\n%s", onDisk)
 	}
-	if _, err := os.Stat(filepath.Join(dir, ".backlog", "tasks", "001-race-in-session-cache.md")); !os.IsNotExist(err) {
-		t.Error("the declined task was left among the active tasks")
-	}
 
 	// The next agent to walk into the same code searches before recording, and
-	// finds the decision without knowing to ask for the archive.
+	// finds the decision: search covers every status.
 	var results []struct {
 		Task taskJSON `json:"task"`
 	}
@@ -584,29 +585,29 @@ func TestDeclineThroughTheLifecycle(t *testing.T) {
 		t.Error("the result carries no reason, so the caller cannot say why it was declined")
 	}
 
-	// A person reading the backlog is not shown finished decisions.
+	// A person reading the backlog sees the declined task, grouped last.
 	var listed []taskJSON
 	unmarshal(t, mustBacklog(t, dir, "list", "--json"), &listed)
-	if len(listed) != 0 {
-		t.Errorf("list showed a declined task by default: %v", listed)
+	if len(listed) != 1 || listed[0].ID != 1 {
+		t.Errorf("list did not show the declined task by default: %v", listed)
 	}
-	if !strings.Contains(mustBacklog(t, dir, "list", "--all"), "declined (1)") {
-		t.Error("--all did not show the declined task")
+	if !strings.Contains(mustBacklog(t, dir, "list"), "declined (1)") {
+		t.Error("the human listing did not show the declined group")
+	}
+	if out := mustBacklog(t, dir, "list", "todo"); strings.Contains(out, "Race in session cache") {
+		t.Error("`list todo` showed a declined task")
 	}
 
-	// Reopening returns it to the active tasks and drops the reason: it now
-	// describes a state the task is no longer in, and git keeps what it said.
+	// Reopening drops the reason — it now describes a state the task is no
+	// longer in, and git keeps what it said — without moving the file.
 	var reopened taskJSON
 	unmarshal(t, mustBacklog(t, dir, "set", "1", "todo", "--json"), &reopened)
 	if reopened.Status != "todo" || reopened.Reason != "" {
 		t.Errorf("reopened task = %+v, want todo with no reason", reopened)
 	}
-	active := read(t, filepath.Join(dir, ".backlog", "tasks", "001-race-in-session-cache.md"))
+	active := read(t, taskFile)
 	if strings.Contains(active, "reason") {
 		t.Errorf("the reopened file still declares a reason:\n%s", active)
-	}
-	if _, err := os.Stat(archived); !os.IsNotExist(err) {
-		t.Error("the reopened task was left in the archive")
 	}
 
 	if got := backlog(t, dir, "validate"); got.code != 0 {

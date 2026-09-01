@@ -23,7 +23,6 @@ func runSearch(env Env, args []string) error {
 	)
 	var sc scope
 	sc.register(fs)
-	sc.searchScope()
 	if err := parseFlags(fs, args); err != nil {
 		return err
 	}

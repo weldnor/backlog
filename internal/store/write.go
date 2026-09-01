@@ -20,17 +20,16 @@ import (
 // processes can never simultaneously hold that bare-numeric claim file - but
 // once one of them renames it to its slugged final name, the bare name is
 // free again, and a process that started its scan earlier can reclaim it. The
-// post-claim existence check therefore covers the claiming directory too, not
-// just the other one, so that stale claim is caught before it overwrites the
-// file that already won the identifier. If a process dies between the claim
-// and the rename, what it leaves behind is a complete, valid task file whose
-// name validate reports as drifted and --fix corrects.
+// post-claim existence check therefore catches that stale claim before it
+// overwrites the file that already won the identifier. If a process dies
+// between the claim and the rename, what it leaves behind is a complete, valid
+// task file whose name validate reports as drifted and --fix corrects.
 func (s *Store) Create(t *task.Task) error {
 	used, err := s.UsedIDs()
 	if err != nil {
 		return err
 	}
-	dir := s.DirFor(t.Status)
+	dir := s.TasksPath()
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
@@ -49,12 +48,12 @@ func (s *Store) Create(t *task.Task) error {
 		}
 
 		// A concurrent process could have already finished claiming this
-		// identifier in this very directory: it renamed its own claim file
-		// from the bare NNN.md we just recreated to its slugged final name,
-		// which frees NNN.md for us to reclaim here. Renaming onto that
-		// final name ourselves would silently overwrite its file, so the
-		// check must cover claimDir too, not just the other directory.
-		if taken, err := s.idTakenByAnotherFile(id, dir, filepath.Base(claim)); err != nil || taken {
+		// identifier: it renamed its own claim file from the bare NNN.md we
+		// just recreated to its slugged final name, which frees NNN.md for us
+		// to reclaim here. Renaming onto that final name ourselves would
+		// silently overwrite its file, so we re-scan the directory for the
+		// identifier before committing.
+		if taken, err := s.idTakenByAnotherFile(id, filepath.Base(claim)); err != nil || taken {
 			f.Close()
 			os.Remove(claim)
 			if err != nil {
@@ -80,30 +79,27 @@ func (s *Store) Create(t *task.Task) error {
 	}
 }
 
-func (s *Store) idTakenByAnotherFile(id int, claimDir, claimName string) (bool, error) {
-	for _, dir := range []string{s.TasksPath(), s.ArchivePath()} {
-		names, err := taskFileNames(dir)
-		if err != nil {
-			return false, err
+func (s *Store) idTakenByAnotherFile(id int, claimName string) (bool, error) {
+	names, err := taskFileNames(s.TasksPath())
+	if err != nil {
+		return false, err
+	}
+	for _, name := range names {
+		if name == claimName {
+			continue // the bare claim file we just created, not a collision
 		}
-		for _, name := range names {
-			if dir == claimDir && name == claimName {
-				continue // the bare claim file we just created, not a collision
-			}
-			if got, ok := task.IDFromFileName(name); ok && got == id {
-				return true, nil
-			}
+		if got, ok := task.IDFromFileName(name); ok && got == id {
+			return true, nil
 		}
 	}
 	return false, nil
 }
 
-// Save writes t to the directory its status requires, renaming or moving the
-// file when the title or the status changed. The write is atomic, so a task
-// file is never observed partially written and a failure leaves the previous
-// content intact.
+// Save writes t to the task directory, renaming the file in place when the
+// title changed. The write is atomic, so a task file is never observed
+// partially written and a failure leaves the previous content intact.
 func (s *Store) Save(t *task.Task) error {
-	dir := s.DirFor(t.Status)
+	dir := s.TasksPath()
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
@@ -120,8 +116,7 @@ func (s *Store) Save(t *task.Task) error {
 	return nil
 }
 
-// Remove deletes the task with the given identifier from whichever directory
-// holds it.
+// Remove deletes the task with the given identifier.
 func (s *Store) Remove(id int) (*task.Task, error) {
 	t, err := s.Find(id)
 	if err != nil {

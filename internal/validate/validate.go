@@ -124,17 +124,9 @@ func check(st *store.Store, version string) ([]Finding, error) {
 }
 
 func checkStructure(c *collector, st *store.Store) {
-	for _, d := range []struct {
-		path string
-		name string
-	}{
-		{st.TasksPath(), store.TasksDir},
-		{st.ArchivePath(), store.ArchiveDir},
-	} {
-		info, err := os.Stat(d.path)
-		if err != nil || !info.IsDir() {
-			c.add(task.SeverityError, c.rel(st.Root), false, "the %s directory is missing", d.name)
-		}
+	info, err := os.Stat(st.TasksPath())
+	if err != nil || !info.IsDir() {
+		c.add(task.SeverityError, c.rel(st.Root), false, "the %s directory is missing", store.TasksDir)
 	}
 
 	strays, err := st.StrayFiles()
@@ -174,18 +166,6 @@ func checkFiles(c *collector, st *store.Store) error {
 			// a title is edited by hand, and renaming is unambiguous.
 			c.add(task.SeverityWarning, rel, true,
 				"the file name no longer matches the title; expected %s", t.FileName())
-		}
-
-		if task.ValidStatus(t.Status) {
-			wantArchived := task.IsTerminal(t.Status)
-			if wantArchived && !e.Archived {
-				c.add(task.SeverityWarning, rel, true,
-					"status is %s but the file is not in %s", t.Status, store.ArchiveDir)
-			}
-			if !wantArchived && e.Archived {
-				c.add(task.SeverityWarning, rel, true,
-					"status is %s but the file is in %s", t.Status, store.ArchiveDir)
-			}
 		}
 
 		if t.ID > 0 {

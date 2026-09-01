@@ -30,7 +30,7 @@ func TestSetDeclineRules(t *testing.T) {
 		if got.Reason != "the fix costs more than the bug" {
 			t.Errorf("Reason = %q", got.Reason)
 		}
-		file := readTaskFile(t, h.path(".backlog", "archive", "001-a-finding.md"))
+		file := readTaskFile(t, h.path(".backlog", "tasks", "001-a-finding.md"))
 		if !strings.Contains(file, "status: declined") || !strings.Contains(file, "reason: the fix costs more than the bug") {
 			t.Errorf("the decline was not written to the file:\n%s", file)
 		}
@@ -110,7 +110,7 @@ func TestSetDeclineRules(t *testing.T) {
 		if got.Reason != "the call site is cold" {
 			t.Errorf("Reason = %q, want the revised text", got.Reason)
 		}
-		file := readTaskFile(t, h.path(".backlog", "archive", "001-a-finding.md"))
+		file := readTaskFile(t, h.path(".backlog", "tasks", "001-a-finding.md"))
 		if strings.Contains(file, "first attempt") {
 			t.Errorf("the old reason survived:\n%s", file)
 		}
@@ -152,34 +152,27 @@ func TestSetDeclineRules(t *testing.T) {
 	})
 }
 
-func TestDeclineMovesTheFile(t *testing.T) {
+func TestDeclineDoesNotMoveTheFile(t *testing.T) {
 	h := newHarness(t)
 	h.initBacklog()
 	decline(t, h, "A finding", "not worth the churn")
 
-	if _, err := os.Stat(h.path(".backlog", "archive", "001-a-finding.md")); err != nil {
-		t.Errorf("the declined task is not in the archive: %v", err)
-	}
-	if _, err := os.Stat(h.path(".backlog", "tasks", "001-a-finding.md")); !os.IsNotExist(err) {
-		t.Error("the declined task was left among the active tasks")
+	if _, err := os.Stat(h.path(".backlog", "tasks", "001-a-finding.md")); err != nil {
+		t.Errorf("the declined task left the tasks directory: %v", err)
 	}
 
-	// Reopening brings it back, without the reason.
+	// Reopening drops the reason but does not move the file either.
 	h.mustRun("set", "1", "todo")
 	if _, err := os.Stat(h.path(".backlog", "tasks", "001-a-finding.md")); err != nil {
-		t.Errorf("the reopened task is not among the active tasks: %v", err)
-	}
-	if _, err := os.Stat(h.path(".backlog", "archive", "001-a-finding.md")); !os.IsNotExist(err) {
-		t.Error("the reopened task was left in the archive")
+		t.Errorf("the reopened task left the tasks directory: %v", err)
 	}
 	if file := readTaskFile(t, h.path(".backlog", "tasks", "001-a-finding.md")); strings.Contains(file, "reason") {
 		t.Errorf("the reopened file still declares a reason:\n%s", file)
 	}
 }
 
-// Both terminal statuses live in the archive, so moving between them is a
-// change of status and nothing else.
-func TestDoneToDeclinedStaysInTheArchive(t *testing.T) {
+// Moving between terminal statuses is a change of status and nothing else.
+func TestDoneToDeclinedStaysInTasks(t *testing.T) {
 	h := newHarness(t)
 	h.initBacklog()
 	h.mustRun("add", "A finding")
@@ -190,11 +183,8 @@ func TestDoneToDeclinedStaysInTheArchive(t *testing.T) {
 	if got.Status != task.StatusDeclined {
 		t.Errorf("Status = %q, want %q", got.Status, task.StatusDeclined)
 	}
-	if _, err := os.Stat(h.path(".backlog", "archive", "001-a-finding.md")); err != nil {
-		t.Errorf("the task left the archive: %v", err)
-	}
-	if _, err := os.Stat(h.path(".backlog", "tasks", "001-a-finding.md")); !os.IsNotExist(err) {
-		t.Error("the task was moved out of the archive")
+	if _, err := os.Stat(h.path(".backlog", "tasks", "001-a-finding.md")); err != nil {
+		t.Errorf("the task left the tasks directory: %v", err)
 	}
 }
 
@@ -252,7 +242,7 @@ func TestReasonIsAlwaysPresentInJSON(t *testing.T) {
 	}
 }
 
-func TestListTreatsDeclinedAsTerminal(t *testing.T) {
+func TestListGroupsDeclinedLast(t *testing.T) {
 	h := newHarness(t)
 	h.initBacklog()
 	h.mustRun("add", "A declined finding")
@@ -263,16 +253,8 @@ func TestListTreatsDeclinedAsTerminal(t *testing.T) {
 	h.mustRun("set", "3", "done")
 	h.mustRun("set", "4", "doing")
 
-	t.Run("excluded by default", func(t *testing.T) {
-		var got []TaskView
-		decode(t, h.mustRun("list", "--json"), &got)
-		if joinIDs(got) != "2,4" {
-			t.Errorf("default listing = %s, want only the live tasks", joinIDs(got))
-		}
-	})
-
-	t.Run("included by --all, in the last group", func(t *testing.T) {
-		stdout := h.mustRun("list", "--all")
+	t.Run("shown by default in the last group", func(t *testing.T) {
+		stdout := h.mustRun("list")
 		todo := strings.Index(stdout, "todo (")
 		doing := strings.Index(stdout, "doing (")
 		done := strings.Index(stdout, "done (")
@@ -287,9 +269,9 @@ func TestListTreatsDeclinedAsTerminal(t *testing.T) {
 
 	t.Run("selectable on its own", func(t *testing.T) {
 		var got []TaskView
-		decode(t, h.mustRun("list", "--status", "declined", "--json"), &got)
+		decode(t, h.mustRun("list", "declined", "--json"), &got)
 		if len(got) != 1 || got[0].ID != 1 {
-			t.Errorf("--status declined returned %v", idsOf(got))
+			t.Errorf("list declined returned %v", idsOf(got))
 		}
 	})
 }

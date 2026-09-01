@@ -68,9 +68,9 @@ Then:
   reference or leave it alone. Then return to your work.
 - **A match is in status `declined`** → do not create a second one either. Someone
   has already weighed this finding and decided against acting on it, and the
-  task carries the `reason` they gave. The plain search above finds declined
-  tasks without `--all`, precisely so that you see this decision before filing
-  the same one again.
+  task carries the `reason` they gave. Search covers every status, so the plain
+  search above already surfaces this decision before you file the same one
+  again.
 - **A task is related but distinct** → create yours, and say in the description
   how it relates.
 - **Nothing relevant** → create the task.

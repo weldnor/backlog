@@ -50,7 +50,7 @@ always exit non-zero, so `--json` output can be piped without filtering.
 
 ### `backlog init`
 
-Creates `.backlog/tasks/` and `.backlog/archive/` and installs the agent
+Creates `.backlog/tasks/` and installs the agent
 skills. It is idempotent and never destroys existing tasks, so it is safe to
 re-run — which is also how the skills are brought up to date after upgrading
 the binary.
@@ -90,22 +90,25 @@ left out when the project is not a git repository.
 
 ### `backlog list`
 
-Shows tasks in `todo` and `doing`, grouped by status in the order `todo`,
-`doing`, `done`, `declined`. Both terminal statuses are left out by default and
-included by `--all`; either can be asked for by name.
+Shows tasks in every status, grouped in the order `todo`, `doing`, `done`,
+`declined`. Four subcommands narrow the listing to a single status; there is no
+flag for selecting status.
 
 ```
-backlog list
-backlog list --all               # include the archive: done and declined
-backlog list --status declined   # repeatable
-backlog list --tag bug           # repeatable; all given tags must match
+backlog list                     # every status
+backlog list todo                # only this status
+backlog list doing
+backlog list done
+backlog list declined
+backlog list done --tag bug      # repeatable; all given tags must match
 backlog list --priority high     # repeatable; any given priority matches
 backlog list --json
 ```
 
-Tasks are ordered by descending priority, then by ascending identifier. The
-human output keeps that order within each status group; `--json` is the same
-single sequence, ungrouped.
+The `--tag` and `--priority` filters apply equally to the bare command and to
+each subcommand. Tasks are ordered by descending priority, then by ascending
+identifier. The human output keeps that order within each status group;
+`--json` is the same single sequence, ungrouped.
 
 An empty result is an answer, not a failure: it exits zero.
 
@@ -120,7 +123,7 @@ descriptions mean the same thing is a job for a reader, not a string metric.
 ```
 backlog search cache
 backlog search "HTTP [45]0\d" --regex
-backlog search cache --all --json
+backlog search cache --json
 ```
 
 Results are deterministic: title matches first, then description and tag
@@ -128,18 +131,13 @@ matches, ascending by identifier within each group. `--regex` is also
 case-insensitive; use `(?-i)` to turn that off. An invalid pattern exits
 non-zero with the syntax error.
 
-Unlike `list`, `search` has no `--priority` filter, and priority never affects
-the ranking. Search answers "has this already been recorded", which is a
-question about content; narrowing it by severity would let a duplicate hide
-behind a filter.
-
-For the same reason, **declined tasks are always in scope**, with or without
-`--all` — letting the archive scope hide one would let a duplicate hide behind
-the scope. `done` deliberately stays behind `--all`: a fixed problem that
-reappears is a regression, and genuinely new information, while a declined
-problem that reappears is the same decision arriving a second time. An explicit
-`--status` is taken at face value, so `--status todo` excludes declined tasks
-like anything else it does not name.
+Unlike `list`, `search` has no `--priority` filter and no status selector, and
+priority never affects the ranking. Search answers "has this already been
+recorded", which is a question about content; narrowing it by severity or
+status would let a duplicate — or a previously declined finding — hide behind a
+scope. Search therefore covers **every status unconditionally**: a `done` or
+`declined` task is returned like any other, and its status travels with the
+result so the caller can tell it apart from a live task.
 
 ### `backlog show`
 
@@ -148,13 +146,13 @@ backlog show 1
 backlog show 1 --json
 ```
 
-Finds the task in either directory. An unknown identifier exits non-zero.
+An unknown identifier exits non-zero.
 
 ### `backlog set`
 
 Changes status, priority, the decline reason and references, in any
-combination; at least one is required. Setting a task to `done` or `declined`
-moves it into the archive; setting it back out returns it to `tasks/`.
+combination; at least one is required. A status change never moves the task
+file: every task lives in `.backlog/tasks/` regardless of status.
 
 ```
 backlog set 1 doing
@@ -166,9 +164,8 @@ backlog set 1 --priority high
 backlog set 1 doing --priority low
 ```
 
-Changing only the priority leaves the status, and therefore the file's
-directory, alone. This is how triage revises a severity that was judged in a
-hurry.
+Changing only the priority leaves the status alone. This is how triage revises
+a severity that was judged in a hurry.
 
 `--reason` is required when declining and rejected otherwise: `declined` with no
 reason fails, and a reason given with any other status fails. On its own it
@@ -179,7 +176,7 @@ eliminate, which is why the reason is not optional.
 
 ### `backlog rm`
 
-Permanently deletes a task from either directory.
+Permanently deletes a task.
 
 ```
 backlog rm 1
@@ -209,12 +206,11 @@ operated on reliably; warnings mean it is readable but violates a convention. Th
 errors, so it can gate a commit hook.
 
 `--fix` repairs only what has a single unambiguous correction: renaming a file
-whose slug drifted from its title, moving a task into the directory its status
-requires, adding a missing format version, writing `priority: medium` into a
-file that declares no priority, normalising timestamp formatting and
-de-duplicating tags — which includes moving a declined task that is sitting
-among the active ones. A priority outside the permitted set is something someone
-typed deliberately, so it is reported and left as it is. Anything else needing a
+whose slug drifted from its title, adding a missing format version, writing
+`priority: medium` into a file that declares no priority, normalising timestamp
+formatting and de-duplicating tags. A priority outside the permitted set is
+something someone typed deliberately, so it is reported and left as it is.
+Anything else needing a
 judgement is reported and left alone: two tasks sharing an identifier,
 frontmatter that does not parse, a declined task with no reason, and a reason
 recorded on a task that is not declined. The last two are prose to write or
@@ -227,6 +223,15 @@ status/priority/tag and a free-text search, a detail dialog for reading and
 editing a task, and a form for creating one. It is the one place title,
 description and tags can be edited after creation — `set` still only reaches
 status, priority, the decline reason and references.
+
+Unlike `backlog list`, the UI shows tasks in every status by default — `done`
+and `declined` included — so the whole backlog is visible at a glance; the
+status filter narrows from there.
+
+On the board view a card can be dragged between columns to change the task's
+status; the drop applies the same change, with the same validation, as editing
+the status field would, and dropping onto the declined column first prompts for
+a reason.
 
 ```
 backlog browse
@@ -270,8 +275,7 @@ two agents on parallel branches do not conflict on the same lines.
 
 ```
 .backlog/
-  tasks/      # status todo and doing
-  archive/    # status done and declined
+  tasks/      # every task, in every status
 ```
 
 Files are named `<id>-<slug>.md`, where the identifier is the lowest unused
@@ -319,8 +323,8 @@ until `validate --fix`, or any other write to that file, adds the line. A value
 outside the three is kept as written and reported as an error.
 
 `status` is one of `todo`, `doing`, `done` or `declined`. The last two are
-terminal — the task is finished, either acted on or deliberately not — and are
-what `archive/` holds.
+terminal — the task is finished, either acted on or deliberately not. Status is
+the only record of where a task stands; its file never moves.
 
 `reason` is the prose explaining a decline, and is present **exactly when** the
 status is `declined`: a declined task without one is an error, and so is a

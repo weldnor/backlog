@@ -69,6 +69,29 @@ func runList(env Env, args []string) error {
 	var sc scope
 	sc.register(fs)
 	sc.registerPriority(fs)
+
+	for _, a := range args {
+		if a == "-h" || a == "--help" {
+			return usagef("usage: backlog list [todo|doing|done|declined] [options]\n"+
+				"\n"+
+				"With no subcommand, lists tasks in every status. A status subcommand\n"+
+				"(todo, doing, done, declined) narrows the listing to that one status.\n"+
+				"\n%s", usageText(fs))
+		}
+	}
+
+	// A leading bare word selects one status: `backlog list done`. The four
+	// names are a closed set, so a subcommand reads better than a flag and a
+	// bare `backlog list` already covers "every status".
+	if len(args) > 0 && !strings.HasPrefix(args[0], "-") {
+		sub := args[0]
+		if !task.ValidStatus(sub) {
+			return usagef("unknown subcommand %q, expected one of %s", sub, strings.Join(task.Statuses, ", "))
+		}
+		sc.status = sub
+		args = args[1:]
+	}
+
 	if err := parseFlags(fs, args); err != nil {
 		return err
 	}

@@ -15,7 +15,7 @@ import (
 
 // Version is the build-time version string. Override with
 // -ldflags "-X github.com/weldnor/backlog/internal/cli.Version=..."
-var Version = "0.3.0"
+var Version = "0.4.0"
 
 // Env carries everything a command needs from the outside world, so that tests
 // can run commands in a temporary directory with captured output.
@@ -55,7 +55,7 @@ func commands() []command {
 	return []command{
 		{"init", "create a backlog in the current directory and install the agent skills", runInit},
 		{"add", "record a new task", runAdd},
-		{"list", "list tasks", runList},
+		{"list", "list tasks (add todo|doing|done|declined to show one status)", runList},
 		{"search", "find tasks by title, description or tag", runSearch},
 		{"show", "show a single task", runShow},
 		{"set", "change a task's status or attach a reference", runSet},

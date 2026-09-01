@@ -118,10 +118,11 @@ func TestInit(t *testing.T) {
 	if !strings.Contains(stdout, ".backlog") {
 		t.Errorf("init did not report where the backlog was created: %q", stdout)
 	}
-	for _, dir := range []string{".backlog/tasks", ".backlog/archive"} {
-		if info, err := os.Stat(h.path(filepath.FromSlash(dir))); err != nil || !info.IsDir() {
-			t.Errorf("%s was not created: %v", dir, err)
-		}
+	if info, err := os.Stat(h.path(filepath.FromSlash(".backlog/tasks"))); err != nil || !info.IsDir() {
+		t.Errorf(".backlog/tasks was not created: %v", err)
+	}
+	if _, err := os.Stat(h.path(filepath.FromSlash(".backlog/archive"))); !os.IsNotExist(err) {
+		t.Errorf(".backlog/archive should not be created, stat err = %v", err)
 	}
 }
 
@@ -255,37 +256,46 @@ func TestList(t *testing.T) {
 	h.mustRun("set", "2", "doing")
 	h.mustRun("set", "3", "done")
 
-	t.Run("default scope leaves out the archive", func(t *testing.T) {
+	t.Run("default scope covers every status", func(t *testing.T) {
 		var got []TaskView
 		decode(t, h.mustRun("list", "--json"), &got)
-		if ids := idsOf(got); strings.Join(ids, ",") != "1,2" {
-			t.Errorf("ids = %v, want the todo and doing tasks", ids)
-		}
-	})
-
-	t.Run("all includes the archive", func(t *testing.T) {
-		var got []TaskView
-		decode(t, h.mustRun("list", "--all", "--json"), &got)
 		if ids := idsOf(got); strings.Join(ids, ",") != "1,2,3" {
 			t.Errorf("ids = %v, want every task", ids)
 		}
 	})
 
-	t.Run("status and tag filters combine", func(t *testing.T) {
+	t.Run("a status subcommand narrows to one status", func(t *testing.T) {
 		var got []TaskView
-		decode(t, h.mustRun("list", "--status", "done", "--tag", "bug", "--json"), &got)
+		decode(t, h.mustRun("list", "done", "--json"), &got)
 		if len(got) != 1 || got[0].ID != 3 {
 			t.Errorf("got %v, want only task 3", idsOf(got))
 		}
 	})
 
-	t.Run("an unknown status is rejected", func(t *testing.T) {
-		code, _, stderr := h.run("list", "--status", "blocked")
+	t.Run("a subcommand and a tag filter combine", func(t *testing.T) {
+		var got []TaskView
+		decode(t, h.mustRun("list", "done", "--tag", "bug", "--json"), &got)
+		if len(got) != 1 || got[0].ID != 3 {
+			t.Errorf("got %v, want only task 3", idsOf(got))
+		}
+	})
+
+	t.Run("an unknown subcommand is rejected", func(t *testing.T) {
+		code, _, stderr := h.run("list", "blocked")
 		if code == 0 {
-			t.Error("an unknown status was accepted")
+			t.Error("an unknown subcommand was accepted")
 		}
 		if !strings.Contains(stderr, "todo, doing, done") {
 			t.Errorf("stderr = %q, want the permitted values", stderr)
+		}
+	})
+
+	t.Run("--status is gone", func(t *testing.T) {
+		if code, _, _ := h.run("list", "--status", "done"); code == 0 {
+			t.Error("list still accepts --status")
+		}
+		if code, _, _ := h.run("list", "--all"); code == 0 {
+			t.Error("list still accepts --all")
 		}
 	})
 
@@ -300,7 +310,7 @@ func TestList(t *testing.T) {
 	})
 
 	t.Run("human output groups by status", func(t *testing.T) {
-		stdout := h.mustRun("list", "--all")
+		stdout := h.mustRun("list")
 		todo := strings.Index(stdout, "todo")
 		doing := strings.Index(stdout, "doing")
 		done := strings.Index(stdout, "done")
@@ -313,9 +323,9 @@ func TestList(t *testing.T) {
 	})
 
 	t.Run("listing is deterministic", func(t *testing.T) {
-		first := h.mustRun("list", "--all", "--json")
+		first := h.mustRun("list", "--json")
 		for i := 0; i < 3; i++ {
-			if got := h.mustRun("list", "--all", "--json"); got != first {
+			if got := h.mustRun("list", "--json"); got != first {
 				t.Fatalf("run %d differed:\n%s\n%s", i, got, first)
 			}
 		}
@@ -364,10 +374,10 @@ func TestSet(t *testing.T) {
 	h.initBacklog()
 	h.mustRun("add", "A travelling task")
 
-	t.Run("todo to doing keeps it active", func(t *testing.T) {
+	t.Run("todo to doing keeps the file in place", func(t *testing.T) {
 		h.mustRun("set", "1", "doing")
 		if _, err := os.Stat(h.path(".backlog", "tasks", "001-a-travelling-task.md")); err != nil {
-			t.Errorf("the task left the active directory: %v", err)
+			t.Errorf("the task left the tasks directory: %v", err)
 		}
 	})
 
@@ -383,10 +393,10 @@ func TestSet(t *testing.T) {
 		}
 	})
 
-	t.Run("done archives the task and records the reference", func(t *testing.T) {
+	t.Run("done keeps the file in tasks and records the reference", func(t *testing.T) {
 		h.mustRun("set", "1", "done", "--ref", "openspec:add-auth")
-		if _, err := os.Stat(h.path(".backlog", "archive", "001-a-travelling-task.md")); err != nil {
-			t.Errorf("the task was not archived: %v", err)
+		if _, err := os.Stat(h.path(".backlog", "tasks", "001-a-travelling-task.md")); err != nil {
+			t.Errorf("a done task left the tasks directory: %v", err)
 		}
 		var got TaskView
 		decode(t, h.mustRun("show", "1", "--json"), &got)
@@ -395,10 +405,10 @@ func TestSet(t *testing.T) {
 		}
 	})
 
-	t.Run("back out of done returns it to the active directory", func(t *testing.T) {
+	t.Run("back out of done leaves the file in place", func(t *testing.T) {
 		h.mustRun("set", "1", "todo")
 		if _, err := os.Stat(h.path(".backlog", "tasks", "001-a-travelling-task.md")); err != nil {
-			t.Errorf("the task did not come back out of the archive: %v", err)
+			t.Errorf("the task file moved on a status change: %v", err)
 		}
 	})
 
@@ -468,7 +478,7 @@ func TestJSONOutputIsCleanOnFailure(t *testing.T) {
 	h.initBacklog()
 	for _, args := range [][]string{
 		{"show", "99", "--json"},
-		{"list", "--status", "blocked", "--json"},
+		{"list", "blocked", "--json"},
 		{"search", "[unclosed", "--regex", "--json"},
 		{"rm", "99", "--json"},
 	} {

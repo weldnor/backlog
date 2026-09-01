@@ -8,27 +8,21 @@ import (
 	"github.com/weldnor/backlog/internal/task"
 )
 
-// scope holds the selection flags list and search share, so that the two
-// commands answer questions about the same set of tasks in the same way.
+// scope holds the selection list and search share, so that the two commands
+// answer questions about the same set of tasks in the same way.
 type scope struct {
-	all      bool
-	statuses stringList
-	tags     stringList
+	// status is a single status a list subcommand narrowed to, or "" for
+	// every status. Search never sets it: a finding that has already been
+	// recorded must be found whatever status its task is in.
+	status string
+	tags   stringList
 	// priorities is bound by list alone. Search answers whether a finding has
 	// already been recorded, which is a question about content: letting a
 	// severity filter narrow it would let a duplicate hide behind the filter.
 	priorities stringList
-	// alwaysDeclined is set by search and not by list. A decline is the most
-	// consequential form of having recorded a finding, so letting the archive
-	// scope hide it would let a duplicate hide behind the scope in exactly the
-	// way a severity filter would. done is not treated this way: a fixed
-	// problem that reappears is a regression, and genuinely new information.
-	alwaysDeclined bool
 }
 
 func (s *scope) register(fs *flag.FlagSet) {
-	fs.BoolVar(&s.all, "all", false, "include tasks in the archive")
-	fs.Var(&s.statuses, "status", "only tasks with this status (repeatable)")
 	fs.Var(&s.tags, "tag", "only tasks carrying this tag (repeatable; all must match)")
 }
 
@@ -37,11 +31,6 @@ func (s *scope) register(fs *flag.FlagSet) {
 func (s *scope) registerPriority(fs *flag.FlagSet) {
 	fs.Var(&s.priorities, "priority", "only tasks with this priority (repeatable; any may match)")
 }
-
-// searchScope marks the scope as search's, which always sees declined tasks.
-// It is a separate call for the same reason registerPriority is: the two
-// commands share this type, so an asymmetry between them has to be asked for.
-func (s *scope) searchScope() { s.alwaysDeclined = true }
 
 // selectedPriorities returns the priorities in scope, or nil when the filter
 // was not used and every priority is in scope.
@@ -60,40 +49,24 @@ func (s *scope) selectedPriorities() (map[string]bool, error) {
 	return out, nil
 }
 
-// selected returns the statuses in scope. An explicit --status is taken at
-// face value, including when it names done or declined; otherwise the archive
-// is left out unless --all was given, except that search always sees declined
-// tasks.
-func (s *scope) selected() (map[string]bool, error) {
+// selected returns the statuses in scope: the one a list subcommand narrowed
+// to, or all four.
+func (s *scope) selected() map[string]bool {
 	out := map[string]bool{}
-	if len(s.statuses) > 0 {
-		for _, v := range s.statuses {
-			v = strings.ToLower(strings.TrimSpace(v))
-			if !task.ValidStatus(v) {
-				return nil, usagef("unknown status %q, expected one of %s", v, strings.Join(task.Statuses, ", "))
-			}
-			out[v] = true
-		}
-		return out, nil
+	if s.status != "" {
+		out[s.status] = true
+		return out
 	}
-	out[task.StatusTodo] = true
-	out[task.StatusDoing] = true
-	if s.all {
-		out[task.StatusDone] = true
+	for _, v := range task.Statuses {
+		out[v] = true
 	}
-	if s.alwaysDeclined || s.all {
-		out[task.StatusDeclined] = true
-	}
-	return out, nil
+	return out
 }
 
 // apply reads the store and returns the matching tasks in ascending identifier
 // order, which is the deterministic order every listing uses.
 func (s *scope) apply(st *store.Store) ([]*task.Task, error) {
-	statuses, err := s.selected()
-	if err != nil {
-		return nil, err
-	}
+	statuses := s.selected()
 	priorities, err := s.selectedPriorities()
 	if err != nil {
 		return nil, err

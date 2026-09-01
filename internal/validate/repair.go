@@ -9,10 +9,9 @@ import (
 )
 
 // repair fixes the findings that have a single unambiguous correction:
-// renaming a file whose slug drifted from its title, moving a task into the
-// directory its status requires, adding a missing format version, writing down
-// the default priority where none was recorded, normalising timestamp
-// formatting, and de-duplicating tags.
+// renaming a file whose slug drifted from its title, adding a missing format
+// version, writing down the default priority where none was recorded,
+// normalising timestamp formatting, and de-duplicating tags.
 //
 // Everything that needs a judgement is left alone. Two tasks sharing an
 // identifier cannot be renumbered without deciding which one keeps the number,
@@ -66,10 +65,6 @@ func repair(st *store.Store) ([]string, error) {
 		want := t.FileName()
 		if want != e.Name {
 			changes = append(changes, fmt.Sprintf("renamed to %s", want))
-		}
-		wantDir := st.DirFor(t.Status)
-		if wantDir != filepath.Dir(e.Path) {
-			changes = append(changes, fmt.Sprintf("moved to %s", filepath.Base(wantDir)))
 		}
 		if len(changes) == 0 {
 			continue

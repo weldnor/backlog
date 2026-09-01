@@ -18,9 +18,8 @@ import (
 // to give a future format migration a foothold.
 const SchemaVersion = 1
 
-// The four permitted statuses. Tasks in a terminal status — StatusDone and
-// StatusDeclined — live in the archive directory; the other two live in the
-// tasks directory.
+// The four permitted statuses. StatusDone and StatusDeclined are terminal;
+// the other two are not.
 const (
 	StatusTodo  = "todo"
 	StatusDoing = "doing"
@@ -46,8 +45,8 @@ func ValidStatus(s string) bool {
 }
 
 // IsTerminal reports whether s is a status a task has finished in — either
-// acted on or declined. It is the layout invariant of the store: a terminal
-// task lives in the archive directory and a non-terminal one does not.
+// acted on or declined. It classifies status for grouping a listing and for
+// the decline-reason rules.
 func IsTerminal(s string) bool {
 	return s == StatusDone || s == StatusDeclined
 }

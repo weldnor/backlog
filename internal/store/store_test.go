@@ -186,37 +186,43 @@ func TestConcurrentCreatesGetDistinctIdentifiers(t *testing.T) {
 	}
 }
 
-func TestSaveMovesTaskBetweenDirectories(t *testing.T) {
+func TestSaveKeepsTaskInTheOneDirectoryAcrossStatusChanges(t *testing.T) {
 	st := newStore(t)
 	tk := add(t, st, "Travelling task")
 
-	tk.Status = task.StatusDone
-	if err := st.Save(tk); err != nil {
-		t.Fatal(err)
-	}
-	if filepath.Dir(tk.Path) != st.ArchivePath() {
-		t.Errorf("a done task is at %q, want the archive", tk.Path)
-	}
-	if _, err := os.Stat(filepath.Join(st.TasksPath(), "001-travelling-task.md")); !os.IsNotExist(err) {
-		t.Error("the task was left behind in the active directory")
-	}
-	if filepath.Base(tk.Path) != "001-travelling-task.md" {
-		t.Errorf("the file name changed on the move: %q", filepath.Base(tk.Path))
+	// done, then declined, then back to a non-terminal status: the file never
+	// leaves .backlog/tasks/, its name changing only with the title.
+	for _, step := range []struct {
+		status string
+		reason string
+	}{
+		{task.StatusDone, ""},
+		{task.StatusDeclined, "not worth the churn"},
+		{task.StatusTodo, ""},
+	} {
+		tk.Status = step.status
+		tk.Reason = step.reason
+		if err := st.Save(tk); err != nil {
+			t.Fatalf("Save(%s): %v", step.status, err)
+		}
+		if filepath.Dir(tk.Path) != st.TasksPath() {
+			t.Errorf("a %s task is at %q, want .backlog/tasks/", step.status, tk.Path)
+		}
+		if filepath.Base(tk.Path) != "001-travelling-task.md" {
+			t.Errorf("the file name changed on a status change: %q", filepath.Base(tk.Path))
+		}
 	}
 
-	tk.Status = task.StatusTodo
-	if err := st.Save(tk); err != nil {
+	names, err := taskFileNames(st.TasksPath())
+	if err != nil {
 		t.Fatal(err)
 	}
-	if filepath.Dir(tk.Path) != st.TasksPath() {
-		t.Errorf("a todo task is at %q, want the active directory", tk.Path)
-	}
-	if _, err := os.Stat(filepath.Join(st.ArchivePath(), "001-travelling-task.md")); !os.IsNotExist(err) {
-		t.Error("the task was left behind in the archive")
+	if len(names) != 1 {
+		t.Errorf("tasks directory holds %v, want a single file", names)
 	}
 }
 
-func TestSaveMovesDeclinedTaskToTheArchive(t *testing.T) {
+func TestSaveKeepsADeclinedTaskFindable(t *testing.T) {
 	st := newStore(t)
 	tk := add(t, st, "Declined task")
 
@@ -225,19 +231,15 @@ func TestSaveMovesDeclinedTaskToTheArchive(t *testing.T) {
 	if err := st.Save(tk); err != nil {
 		t.Fatal(err)
 	}
-	if filepath.Dir(tk.Path) != st.ArchivePath() {
-		t.Errorf("a declined task is at %q, want the archive", tk.Path)
+	if filepath.Dir(tk.Path) != st.TasksPath() {
+		t.Errorf("a declined task is at %q, want .backlog/tasks/", tk.Path)
 	}
-	// It has to be discoverable there, not merely written there.
 	found, err := st.Find(tk.ID)
 	if err != nil {
 		t.Fatalf("Find: %v", err)
 	}
 	if found.Status != task.StatusDeclined || found.Reason != "not worth the churn" {
 		t.Errorf("read back status %q reason %q", found.Status, found.Reason)
-	}
-	if _, err := os.Stat(filepath.Join(st.TasksPath(), "001-declined-task.md")); !os.IsNotExist(err) {
-		t.Error("the task was left behind in the active directory")
 	}
 }
 
@@ -286,20 +288,20 @@ func TestWriteFileAtomicLeavesNoPartialFile(t *testing.T) {
 	}
 }
 
-func TestFindAcrossBothDirectories(t *testing.T) {
+func TestFindAcrossStatuses(t *testing.T) {
 	st := newStore(t)
 	active := add(t, st, "Active")
-	archived := add(t, st, "Archived")
-	archived.Status = task.StatusDone
-	if err := st.Save(archived); err != nil {
+	done := add(t, st, "Done")
+	done.Status = task.StatusDone
+	if err := st.Save(done); err != nil {
 		t.Fatal(err)
 	}
 
 	if got, err := st.Find(active.ID); err != nil || got.Title != "Active" {
 		t.Errorf("Find(active) = %v, %v", got, err)
 	}
-	if got, err := st.Find(archived.ID); err != nil || got.Title != "Archived" {
-		t.Errorf("Find(archived) = %v, %v", got, err)
+	if got, err := st.Find(done.ID); err != nil || got.Title != "Done" {
+		t.Errorf("Find(done) = %v, %v", got, err)
 	}
 	if _, err := st.Find(99); err == nil {
 		t.Error("expected an error for an unknown identifier")

@@ -21,7 +21,7 @@ export const STATUS_META: Record<string, StatusMeta> = {
 export const BOARD_EMPTY_NOTE: Record<string, string> = {
   todo: "Nothing captured here yet.",
   doing: "Nothing in flight.",
-  done: "Archive — acted on. Behind --all.",
+  done: "Archive — acted on and moved out of the working set.",
   declined:
     "Always in scope for search — a duplicate must not hide behind a filter.",
 };

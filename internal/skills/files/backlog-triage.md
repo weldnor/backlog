@@ -145,9 +145,8 @@ name, an issue URL, a ticket key. Prefix it with the system it belongs to
 (`issue:`, `pr:`, or the name of the planning tool) so a later reader can tell
 what kind of thing it is.
 
-Set the task to `done` — which moves it into the archive — only when the
-underlying problem is actually fixed, not when it has been written down
-somewhere else.
+Set the task to `done` only when the underlying problem is actually fixed, not
+when it has been written down somewhere else.
 
 ## Finishing
 

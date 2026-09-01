@@ -11,34 +11,44 @@ func searchFixture(t *testing.T) *harness {
 	h.initBacklog()
 	h.mustRun("add", "Race in session Cache", "--tag", "bug")
 	h.mustRun("add", "Unrelated title", "--description", "but the cache is mentioned here")
-	h.mustRun("add", "An archived finding about the cache")
+	h.mustRun("add", "A completed finding about the cache")
 	h.mustRun("set", "3", "done")
 	return h
 }
 
-func TestSearchScopeMatchesList(t *testing.T) {
+func TestSearchCoversEveryStatus(t *testing.T) {
 	h := searchFixture(t)
 
+	// Task 3 is done; search still returns it, unconditionally.
 	var got []SearchResultView
 	decode(t, h.mustRun("search", "cache", "--json"), &got)
+	if len(got) != 3 {
+		t.Errorf("got %d results, want every status covered (3)", len(got))
+	}
+	var sawDone bool
 	for _, r := range got {
 		if r.Task.ID == 3 {
-			t.Error("an archived task was returned without --all")
+			sawDone = true
 		}
 	}
-	if len(got) != 2 {
-		t.Errorf("got %d results, want 2", len(got))
+	if !sawDone {
+		t.Errorf("the done task was not returned: %v", got)
 	}
 
-	decode(t, h.mustRun("search", "cache", "--all", "--json"), &got)
-	if len(got) != 3 {
-		t.Errorf("with --all, got %d results, want 3", len(got))
-	}
-
-	// The same status and tag filters as list apply.
+	// The same tag filter as list applies.
 	decode(t, h.mustRun("search", "cache", "--tag", "bug", "--json"), &got)
 	if len(got) != 1 || got[0].Task.ID != 1 {
 		t.Errorf("with a tag filter, got %v", got)
+	}
+}
+
+func TestSearchHasNoStatusSelector(t *testing.T) {
+	h := searchFixture(t)
+	if code, _, _ := h.run("search", "cache", "--all"); code == 0 {
+		t.Error("search accepted --all")
+	}
+	if code, _, _ := h.run("search", "cache", "--status", "todo"); code == 0 {
+		t.Error("search accepted --status")
 	}
 }
 
@@ -134,10 +144,10 @@ func TestSearchRequiresAQuery(t *testing.T) {
 	}
 }
 
-// Search exists to answer whether a finding has already been recorded, and a
-// decline is the most consequential form of having recorded one — so it is in
-// scope without the caller having to know to ask.
-func TestSearchAlwaysSeesDeclinedTasks(t *testing.T) {
+// Search exists to answer whether a finding has already been recorded, so both
+// a completed and a declined earlier task are in scope: neither a duplicate nor
+// a previously rejected finding can hide behind a scope.
+func TestSearchSeesCompletedAndDeclinedTasks(t *testing.T) {
 	h := searchFixture(t)
 	h.mustRun("add", "A declined finding about the cache")
 	h.mustRun("set", "4", "declined", "--reason", "the call site is cold")
@@ -162,31 +172,10 @@ func TestSearchAlwaysSeesDeclinedTasks(t *testing.T) {
 		}
 	}
 	if !sawDeclined {
-		t.Errorf("the declined task was not found without --all: %v", got)
+		t.Errorf("the declined task was not found: %v", got)
 	}
-	// done is genuinely different: a fixed problem that reappears is a
-	// regression, and new information.
-	if sawDone {
-		t.Error("a done task was returned without --all")
-	}
-}
-
-func TestSearchStatusFilterIsTakenAtFaceValue(t *testing.T) {
-	h := searchFixture(t)
-	h.mustRun("add", "A declined finding about the cache")
-	h.mustRun("set", "4", "declined", "--reason", "the call site is cold")
-
-	var got []SearchResultView
-	decode(t, h.mustRun("search", "cache", "--status", "todo", "--json"), &got)
-	for _, r := range got {
-		if r.Task.ID == 4 {
-			t.Error("--status todo returned a declined task")
-		}
-	}
-
-	decode(t, h.mustRun("search", "cache", "--status", "declined", "--json"), &got)
-	if len(got) != 1 || got[0].Task.ID != 4 {
-		t.Errorf("--status declined returned %d results, want only the declined one", len(got))
+	if !sawDone {
+		t.Errorf("the done task was not found: %v", got)
 	}
 }
 

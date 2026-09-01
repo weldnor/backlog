@@ -17,16 +17,15 @@ import (
 // Directory names. They are fixed: there is no configuration file, so a
 // backlog looks the same in every project.
 const (
-	DirName    = ".backlog"
-	TasksDir   = "tasks"
-	ArchiveDir = "archive"
+	DirName  = ".backlog"
+	TasksDir = "tasks"
 )
 
 // ErrNotFound reports that no backlog exists in the working directory or any
 // of its ancestors.
 var ErrNotFound = errors.New("no backlog found in this directory or any parent; run 'backlog init' to create one")
 
-// ErrNoSuchTask reports a task identifier that is not present in either
+// ErrNoSuchTask reports a task identifier that is not present in the task
 // directory.
 var ErrNoSuchTask = errors.New("no such task")
 
@@ -69,67 +68,47 @@ func Init(dir string) (*Store, error) {
 		return nil, err
 	}
 	root := filepath.Join(abs, DirName)
-	for _, sub := range []string{TasksDir, ArchiveDir} {
-		if err := os.MkdirAll(filepath.Join(root, sub), 0o755); err != nil {
-			return nil, err
-		}
+	if err := os.MkdirAll(filepath.Join(root, TasksDir), 0o755); err != nil {
+		return nil, err
 	}
 	return &Store{Root: root, Project: abs}, nil
 }
 
-// TasksPath is where tasks in a non-terminal status — todo and doing — live.
+// TasksPath is the one directory a backlog's tasks live in, regardless of
+// status.
 func (s *Store) TasksPath() string { return filepath.Join(s.Root, TasksDir) }
 
-// ArchivePath is where tasks in a terminal status — done or declined — live.
-func (s *Store) ArchivePath() string { return filepath.Join(s.Root, ArchiveDir) }
-
-// DirFor returns the directory a task with the given status belongs in. The
-// split is terminal versus not, rather than a list of statuses, so that the
-// two directories keep their meaning as the vocabulary grows.
-func (s *Store) DirFor(status string) string {
-	if task.IsTerminal(status) {
-		return s.ArchivePath()
-	}
-	return s.TasksPath()
-}
-
-// Entry is one file found in a task directory, together with whatever could be
-// made of it. A file that cannot be parsed is reported rather than skipped, so
-// that validate can name it.
+// Entry is one file found in the task directory, together with whatever could
+// be made of it. A file that cannot be parsed is reported rather than skipped,
+// so that validate can name it.
 type Entry struct {
-	Path     string
-	Name     string
-	Archived bool
-	Task     *task.Task
-	Err      error
+	Path string
+	Name string
+	Task *task.Task
+	Err  error
 }
 
-// Entries reads every task file in both directories, in ascending identifier
-// order with archived tasks after active ones of the same identifier.
+// Entries reads every task file in the task directory, in ascending identifier
+// order.
 func (s *Store) Entries() ([]Entry, error) {
 	var out []Entry
-	for _, spec := range []struct {
-		dir      string
-		archived bool
-	}{{s.TasksPath(), false}, {s.ArchivePath(), true}} {
-		names, err := taskFileNames(spec.dir)
+	names, err := taskFileNames(s.TasksPath())
+	if err != nil {
+		return nil, err
+	}
+	for _, name := range names {
+		path := filepath.Join(s.TasksPath(), name)
+		e := Entry{Path: path, Name: name}
+		data, err := os.ReadFile(path)
 		if err != nil {
-			return nil, err
+			e.Err = err
+		} else if t, err := task.Parse(name, data); err != nil {
+			e.Err = err
+		} else {
+			t.Path = path
+			e.Task = t
 		}
-		for _, name := range names {
-			path := filepath.Join(spec.dir, name)
-			e := Entry{Path: path, Name: name, Archived: spec.archived}
-			data, err := os.ReadFile(path)
-			if err != nil {
-				e.Err = err
-			} else if t, err := task.Parse(name, data); err != nil {
-				e.Err = err
-			} else {
-				t.Path = path
-				e.Task = t
-			}
-			out = append(out, e)
-		}
+		out = append(out, e)
 	}
 	sort.SliceStable(out, func(i, j int) bool {
 		ii, jj := entryID(out[i]), entryID(out[j])
@@ -168,8 +147,7 @@ func (s *Store) Tasks() ([]*task.Task, error) {
 	return out, nil
 }
 
-// Find returns the task with the given identifier, looking in both
-// directories.
+// Find returns the task with the given identifier.
 func (s *Store) Find(id int) (*task.Task, error) {
 	tasks, err := s.Tasks()
 	if err != nil {
@@ -183,30 +161,29 @@ func (s *Store) Find(id int) (*task.Task, error) {
 	return nil, fmt.Errorf("%w: %d", ErrNoSuchTask, id)
 }
 
-// StrayFiles lists entries in the two task directories that are not task
-// files, so that validate can report them.
+// StrayFiles lists entries in the task directory that are not task files, so
+// that validate can report them.
 func (s *Store) StrayFiles() ([]string, error) {
 	var out []string
-	for _, dir := range []string{s.TasksPath(), s.ArchivePath()} {
-		entries, err := os.ReadDir(dir)
-		if errors.Is(err, fs.ErrNotExist) {
+	dir := s.TasksPath()
+	entries, err := os.ReadDir(dir)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	for _, e := range entries {
+		name := e.Name()
+		if strings.HasPrefix(name, ".") {
+			continue // dotfiles are the tool's own scratch space
+		}
+		if e.IsDir() {
+			out = append(out, filepath.Join(dir, name))
 			continue
 		}
-		if err != nil {
-			return nil, err
-		}
-		for _, e := range entries {
-			name := e.Name()
-			if strings.HasPrefix(name, ".") {
-				continue // dotfiles are the tool's own scratch space
-			}
-			if e.IsDir() {
-				out = append(out, filepath.Join(dir, name))
-				continue
-			}
-			if _, ok := task.IDFromFileName(name); !ok {
-				out = append(out, filepath.Join(dir, name))
-			}
+		if _, ok := task.IDFromFileName(name); !ok {
+			out = append(out, filepath.Join(dir, name))
 		}
 	}
 	sort.Strings(out)
@@ -234,20 +211,18 @@ func taskFileNames(dir string) ([]string, error) {
 	return names, nil
 }
 
-// UsedIDs returns the identifiers currently taken across both directories, as
+// UsedIDs returns the identifiers currently taken in the task directory, as
 // read from file names. File names are used rather than frontmatter because
 // allocation has to be cheap and the two agree in any backlog that validates.
 func (s *Store) UsedIDs() (map[int]bool, error) {
 	used := map[int]bool{}
-	for _, dir := range []string{s.TasksPath(), s.ArchivePath()} {
-		names, err := taskFileNames(dir)
-		if err != nil {
-			return nil, err
-		}
-		for _, name := range names {
-			if id, ok := task.IDFromFileName(name); ok {
-				used[id] = true
-			}
+	names, err := taskFileNames(s.TasksPath())
+	if err != nil {
+		return nil, err
+	}
+	for _, name := range names {
+		if id, ok := task.IDFromFileName(name); ok {
+			used[id] = true
 		}
 	}
 	return used, nil
