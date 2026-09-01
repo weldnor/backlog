@@ -194,6 +194,41 @@ task that is already `declined`. Setting a declined task to any other status
 clears the reason. A decline nobody can audit is the state the status exists to
 eliminate, which is why the reason is not optional.
 
+### `backlog edit`
+
+Changes title, description or tags — the fields `set` deliberately does not
+reach, because they are prose and content rather than workflow state. At least
+one is required.
+
+```
+backlog edit 1 --title "Sharper title"
+backlog edit 1 --description "Updated context."
+backlog edit 1 --tag bug --tag concurrency
+backlog edit 1 --title "..." --description "..." --tag bug
+```
+
+`--tag` is repeatable and, when given at all, replaces the entire tag list
+rather than adding to it — the same full-replacement semantics `browse` uses.
+A title change renames the file the same way `set` never does, since `set`
+never touches the title.
+
+### `backlog tag`
+
+Renames or removes a tag across every task that carries it. A tag exists only
+as text repeated on each task's `tags` list, so without this a typo made once
+at capture time has to be fixed one task at a time by hand.
+
+```
+backlog tag rm flaky
+backlog tag rename bug defect
+```
+
+Both match tag names case-insensitively, the same as `list --tag` and
+`show`'s `HasTag`. `rename` deduplicates: if a task already carries the new
+name, or ends up with both spellings, the result keeps one. Neither
+subcommand touches a task that does not carry the given tag, and both print
+which tasks changed.
+
 ### `backlog rm`
 
 Permanently deletes a task.
@@ -207,6 +242,22 @@ mis-capture, something filed by accident. It is not how you record a decision
 not to act on a finding: that is `declined`, which keeps the finding and its
 reasoning where `search` can still find them. The CLI enforces nothing here; the
 distinction is guidance, and `rm` deletes whatever identifier it is given.
+
+### `backlog stats`
+
+Summarizes the backlog: totals by status and by priority, a count per tag, and
+the average age of tasks still `todo` or `doing`. This is the shape-of-the-backlog
+question a triage starts with, otherwise answered by piping `list --json`
+through a script.
+
+```
+backlog stats
+backlog stats --json
+```
+
+Age is computed from `metadata.created` and counted only for tasks in a
+non-terminal status; a backlog with no open tasks reports that rather than a
+misleading zero.
 
 ### `backlog validate`
 
@@ -240,8 +291,8 @@ prose to delete, which no tool can decide.
 
 Starts a local web UI for the backlog: a list and a board view, filters by
 status/priority/tag and a free-text search, a detail dialog for reading and
-editing a task, and a form for creating one. It is the one place title,
-description and tags can be edited after creation — `set` still only reaches
+editing a task, and a form for creating one. Title, description and tags can
+also be edited from the terminal with `backlog edit`; `set` still only reaches
 status, priority, the decline reason and references.
 
 Unlike `backlog list`, the UI shows tasks in every status by default — `done`

@@ -59,7 +59,10 @@ func commands() []command {
 		{"search", "find tasks by title, description or tag", runSearch},
 		{"show", "show a single task", runShow},
 		{"set", "change a task's status or attach a reference", runSet},
+		{"edit", "change a task's title, description or tags", runEdit},
+		{"tag", "rename or remove a tag across every task (rm|rename)", runTag},
 		{"rm", "delete a task", runRm},
+		{"stats", "summarize the backlog by status, priority and tag", runStats},
 		{"validate", "check the backlog for problems", runValidate},
 		{"browse", "start a local web UI for the backlog", runBrowse},
 	}
