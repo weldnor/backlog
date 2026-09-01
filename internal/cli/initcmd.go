@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"path/filepath"
 
+	"github.com/weldnor/backlog/internal/hooks"
 	"github.com/weldnor/backlog/internal/skills"
 	"github.com/weldnor/backlog/internal/store"
 )
@@ -11,8 +12,9 @@ import (
 func runInit(env Env, args []string) error {
 	fs := newFlagSet("init")
 	var (
-		force      = fs.Bool("force", false, "overwrite skill files that have been edited locally")
+		force      = fs.Bool("force", false, "overwrite skill and hook entries that have been edited locally")
 		skipSkills = fs.Bool("no-skills", false, "create the backlog without installing the agent skills")
+		skipHooks  = fs.Bool("no-hooks", false, "create the backlog without installing the agent hooks")
 		asJSON     = fs.Bool("json", false, "print the result as JSON")
 	)
 	if err := parseFlags(fs, args); err != nil {
@@ -37,19 +39,36 @@ func runInit(env Env, args []string) error {
 		}
 	}
 
+	var hooked []hooks.Result
+	if !*skipHooks {
+		hooked, err = hooks.Install(st.Project, Version, *force)
+		if err != nil {
+			return err
+		}
+	}
+
 	if *asJSON {
 		type skillView struct {
 			Name   string `json:"name"`
 			Path   string `json:"path"`
 			Action string `json:"action"`
 		}
+		type hookView struct {
+			ID     string `json:"id"`
+			Event  string `json:"event"`
+			Action string `json:"action"`
+		}
 		out := struct {
 			Backlog string      `json:"backlog"`
 			Version string      `json:"version"`
 			Skills  []skillView `json:"skills"`
-		}{Backlog: filepath.ToSlash(st.Root), Version: Version, Skills: []skillView{}}
+			Hooks   []hookView  `json:"hooks"`
+		}{Backlog: filepath.ToSlash(st.Root), Version: Version, Skills: []skillView{}, Hooks: []hookView{}}
 		for _, r := range installed {
 			out.Skills = append(out.Skills, skillView{r.Name, filepath.ToSlash(rel(st.Project, r.Path)), string(r.Action)})
+		}
+		for _, r := range hooked {
+			out.Hooks = append(out.Hooks, hookView{r.ID, r.Event, string(r.Action)})
 		}
 		return writeJSON(env.Stdout, out)
 	}
@@ -63,6 +82,16 @@ func runInit(env Env, args []string) error {
 			fmt.Fprintf(env.Stderr, "backlog init: %s was overwritten and its local edits are gone\n", rel(st.Project, r.Path))
 		default:
 			fmt.Fprintf(env.Stdout, "  skill %s %s\n", r.Name, r.Action)
+		}
+	}
+	for _, r := range hooked {
+		switch r.Action {
+		case hooks.Skipped:
+			fmt.Fprintf(env.Stderr, "backlog init: the %s hook in %s has local edits and was left alone; use --force to replace it\n", r.ID, hooks.SettingsPath)
+		case hooks.Overwritten:
+			fmt.Fprintf(env.Stderr, "backlog init: the %s hook in %s was overwritten and its local edits are gone\n", r.ID, hooks.SettingsPath)
+		default:
+			fmt.Fprintf(env.Stdout, "  hook %s (%s) %s\n", r.ID, r.Event, r.Action)
 		}
 	}
 	return nil

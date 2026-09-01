@@ -82,6 +82,28 @@ because the code has changed underneath it, say that too, and leave the decision
 to reopen the task to the user. Reopening it yourself, or filing a duplicate to
 get around the decline, both throw away the judgement the decline recorded.
 
+## Closing a task the same search turns up
+
+The search above sometimes surfaces a task that your current change has
+already resolved, or one that is an exact duplicate of what you were about to
+file. Resolve it on the spot rather than leaving it for a later triage that may
+not come soon:
+
+- **Your current change fixed it** — close it, with the commit that did:
+  ```
+  backlog set <id> done --ref "commit:<sha>"
+  ```
+- **It is an exact duplicate of the finding you were about to record** — delete
+  it rather than filing a second copy:
+  ```
+  backlog rm <id>
+  ```
+
+Do this only for the unambiguous cases above. Anything short of "my change
+plainly fixed it" or "this is the same finding, word for word" is a judgement
+call for `backlog-triage`, not something to decide in passing — leave it in
+`todo` and move on.
+
 ## Recording it
 
 ```
