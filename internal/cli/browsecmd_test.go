@@ -127,10 +127,13 @@ func TestBrowseWarnsOnlyForNonLoopbackHost(t *testing.T) {
 	<-done2
 }
 
-func TestBrowseLogsBrowserLaunchFailureWithoutFailingTheCommand(t *testing.T) {
-	// --no-open omitted deliberately: this exercises the real opener, which
-	// has nothing to launch in the sandbox this test runs in, so it fails
-	// and should only be logged, not fail the command.
+func TestBrowseWithRealOpenerStillStartsAndExitsCleanly(t *testing.T) {
+	// --no-open omitted deliberately: this exercises the real opener wiring.
+	// Whether the machine running this test has a browser launcher or not,
+	// the command must start, print its URL, and exit 0 on interrupt — a
+	// browser-launch failure is only logged, never fatal. The logging itself
+	// is covered deterministically by
+	// browse.TestServeLogsBrowserLaunchFailureAndKeepsServing.
 	h := newHarness(t)
 	h.initBacklog()
 
@@ -140,10 +143,6 @@ func TestBrowseLogsBrowserLaunchFailureWithoutFailingTheCommand(t *testing.T) {
 		done <- Run(Env{Stdout: &stdout, Stderr: &stderr, Dir: h.dir}, []string{"browse", "--port", "0", "--json"})
 	}()
 	waitFor(t, stdout.String)
-	logged := waitFor(t, stderr.String)
-	if !strings.Contains(logged, "could not open a browser") {
-		t.Errorf("stderr = %q, want the browser-launch failure logged", logged)
-	}
 
 	interruptSelf(t)
 	select {
