@@ -7,13 +7,13 @@ import (
 	"testing"
 )
 
-func TestBothSkillsAreEmbedded(t *testing.T) {
+func TestAllThreeSkillsAreEmbedded(t *testing.T) {
 	all := All()
-	if len(all) != 2 {
-		t.Fatalf("got %d skills, want the capture skill and the triage skill", len(all))
+	if len(all) != 3 {
+		t.Fatalf("got %d skills, want the capture, sort and triage skills", len(all))
 	}
-	names := []string{all[0].Name, all[1].Name}
-	if names[0] != "backlog-capture" || names[1] != "backlog-triage" {
+	names := []string{all[0].Name, all[1].Name, all[2].Name}
+	if names[0] != "backlog-capture" || names[1] != "backlog-sort" || names[2] != "backlog-triage" {
 		t.Fatalf("skills = %v", names)
 	}
 	for _, s := range all {
@@ -24,24 +24,28 @@ func TestBothSkillsAreEmbedded(t *testing.T) {
 }
 
 // The description is what the model matches against to decide whether to load
-// a skill, so the two triggers have to stay distinct.
+// a skill, so the three triggers have to stay distinct.
 func TestSkillsCarryDistinctTriggers(t *testing.T) {
 	all := All()
-	capture, triage := all[0].body, all[1].body
+	capture, sortSkill, triage := all[0].body, all[1].body, all[2].body
 
 	for _, want := range []string{"name: backlog-capture", "description:"} {
 		if !strings.Contains(capture, want) {
 			t.Errorf("the capture skill is missing %q", want)
 		}
 	}
+	if !strings.Contains(sortSkill, "name: backlog-sort") {
+		t.Error("the sort skill is missing its name")
+	}
 	if !strings.Contains(triage, "name: backlog-triage") {
 		t.Error("the triage skill is missing its name")
 	}
 
 	captureDesc := descriptionOf(t, capture)
+	sortDesc := descriptionOf(t, sortSkill)
 	triageDesc := descriptionOf(t, triage)
-	if captureDesc == triageDesc {
-		t.Fatal("both skills share a description")
+	if captureDesc == triageDesc || captureDesc == sortDesc || sortDesc == triageDesc {
+		t.Fatal("two skills share a description")
 	}
 	if !strings.Contains(captureDesc, "Record") {
 		t.Errorf("the capture description does not describe recording: %q", captureDesc)
@@ -50,9 +54,25 @@ func TestSkillsCarryDistinctTriggers(t *testing.T) {
 		t.Errorf("the triage description does not describe reviewing: %q", triageDesc)
 	}
 	// Each description has to say when *not* to fire, or the triggers blur.
-	for name, desc := range map[string]string{"capture": captureDesc, "triage": triageDesc} {
-		if !strings.Contains(desc, "Do not use when") {
+	for name, desc := range map[string]string{"capture": captureDesc, "sort": sortDesc, "triage": triageDesc} {
+		if !strings.Contains(desc, "Do not use") {
 			t.Errorf("the %s description does not say when not to use it", name)
+		}
+	}
+}
+
+// backlog-sort only ever closes what the branch already fixed; anything else
+// is left for backlog-triage, so the two must not overlap in what they decide.
+func TestSortSkillNeverDecidesWhatTriageDecides(t *testing.T) {
+	body := All()[1].body
+	for _, want := range []string{"git log", "done", "metadata.source", "--ref"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("the sort skill does not cover %q", want)
+		}
+	}
+	for _, forbidden := range []string{"backlog set <id> declined", "--priority"} {
+		if strings.Contains(body, forbidden) {
+			t.Errorf("the sort skill makes a triage-level call: %q", forbidden)
 		}
 	}
 }
@@ -83,7 +103,7 @@ func TestCaptureSkillStatesTheThreshold(t *testing.T) {
 // All knowledge of planning systems lives in the triage skill, and even there
 // it is detected at run time rather than hard-coded.
 func TestTriageSkillIsPlanningSystemAgnostic(t *testing.T) {
-	body := All()[1].body
+	body := All()[2].body
 	for _, want := range []string{"run time", "backlog set", "--ref", "free-form"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("the triage skill does not cover %q", want)
@@ -117,8 +137,8 @@ func TestInstallWritesBothSkillsIntoTheProject(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(results) != 2 {
-		t.Fatalf("got %d results, want 2", len(results))
+	if len(results) != 3 {
+		t.Fatalf("got %d results, want 3", len(results))
 	}
 	for _, r := range results {
 		if r.Action != Written {
@@ -237,8 +257,8 @@ func TestStaleReportsOnlyOlderSkills(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(stale) != 2 {
-		t.Fatalf("Stale at a newer version returned %d, want 2", len(stale))
+	if len(stale) != 3 {
+		t.Fatalf("Stale at a newer version returned %d, want 3", len(stale))
 	}
 	if string(stale[0].Action) != "1.0.0" {
 		t.Errorf("the installed version was not reported: %q", stale[0].Action)

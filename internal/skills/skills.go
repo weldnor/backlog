@@ -41,12 +41,13 @@ type Skill struct {
 
 // All returns the skills the CLI installs, in a stable order.
 //
-// Capture and triage are separate files because a skill's description is what
-// the model matches against to decide whether to load it. "Record a finding you
-// just hit" and "review what has accumulated" are opposite situations; merged
-// into one description the trigger blurs and fires at the wrong times.
+// Capture, sort and triage are separate files because a skill's description is
+// what the model matches against to decide whether to load it. "Record a
+// finding you just hit", "close what the branch already fixed" and "review
+// what has accumulated" are three different situations; merged into one
+// description the trigger blurs and fires at the wrong times.
 func All() []Skill {
-	names := []string{"backlog-capture", "backlog-triage"}
+	names := []string{"backlog-capture", "backlog-sort", "backlog-triage"}
 	out := make([]Skill, 0, len(names))
 	for _, name := range names {
 		body, err := content.ReadFile("files/" + name + ".md")

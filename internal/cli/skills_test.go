@@ -17,7 +17,7 @@ func TestInitInstallsBothSkillsStampedWithTheVersion(t *testing.T) {
 	h := newHarness(t)
 	h.initBacklog()
 
-	for _, name := range []string{"backlog-capture", "backlog-triage"} {
+	for _, name := range []string{"backlog-capture", "backlog-sort", "backlog-triage"} {
 		data, err := os.ReadFile(skillPath(h, name))
 		if err != nil {
 			t.Fatalf("%s was not installed: %v", name, err)
@@ -181,7 +181,7 @@ func TestSkillsInstalledByThePreviousVersionAreStale(t *testing.T) {
 
 	seen := map[string]bool{}
 	for _, f := range report.Findings {
-		for _, name := range []string{"backlog-capture", "backlog-triage"} {
+		for _, name := range []string{"backlog-capture", "backlog-sort", "backlog-triage"} {
 			if strings.Contains(f.Message, name+" skill") && strings.Contains(f.Message, previous) {
 				seen[name] = true
 				if f.Severity != "warning" {
@@ -193,7 +193,7 @@ func TestSkillsInstalledByThePreviousVersionAreStale(t *testing.T) {
 			}
 		}
 	}
-	for _, name := range []string{"backlog-capture", "backlog-triage"} {
+	for _, name := range []string{"backlog-capture", "backlog-sort", "backlog-triage"} {
 		if !seen[name] {
 			t.Errorf("the %s skill from v%s was not reported as stale", name, previous)
 		}

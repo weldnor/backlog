@@ -50,16 +50,36 @@ always exit non-zero, so `--json` output can be piped without filtering.
 
 ### `backlog init`
 
-Creates `.backlog/tasks/` and installs the agent
-skills. It is idempotent and never destroys existing tasks, so it is safe to
-re-run — which is also how the skills are brought up to date after upgrading
-the binary.
+Creates `.backlog/tasks/`, installs the agent
+skills, and installs two Claude Code hooks into `.claude/settings.json`. It is
+idempotent and never destroys existing tasks, so it is safe to re-run — which
+is also how the skills and hooks are brought up to date after upgrading the
+binary.
 
 ```
 backlog init                 # create or refresh
-backlog init --force         # also replace skills that were edited locally
-backlog init --no-skills     # create the backlog only
+backlog init --force         # also replace skills and hooks that were edited locally
+backlog init --no-skills     # create the backlog without the agent skills
+backlog init --no-hooks      # create the backlog without the agent hooks
 ```
+
+The hooks make two parts of the workflow automatic instead of depending on an
+agent remembering them:
+
+- A `Stop` hook runs `backlog validate --strict` at the end of every turn, so a
+  malformed task file is caught immediately rather than at the next `validate`
+  someone happens to run.
+- A `SessionStart` hook adds a short reminder that this project keeps a
+  backlog and points at the `backlog-capture` skill, so an agent that has
+  never seen this project's skills still knows to search and record findings
+  rather than losing them.
+
+Installing a hook never touches anything else already in
+`.claude/settings.json` — only the two entries backlog owns are added or
+refreshed, the same way `init` never destroys a task. Editing an installed
+hook by hand is preserved across re-runs the same way an edited skill is: it is
+left alone unless `--force` is given, and `validate` warns when an installed
+hook falls behind the running binary's version.
 
 ### `backlog add`
 
@@ -349,10 +369,11 @@ of that lives in the triage skill.
 
 ## The agent workflow
 
-`backlog init` installs two Claude Code skills into the project. They are
+`backlog init` installs three Claude Code skills into the project. They are
 separate files because a skill's description is what the model matches against
-to decide whether to load it, and "record a finding you just hit" and "review
-what has accumulated" are opposite situations.
+to decide whether to load it, and "record a finding you just hit", "close what
+the branch already fixed" and "review what has accumulated" are three
+different situations.
 
 **`backlog-capture`** — the hot path. It fires when an agent, mid-task, finds a
 problem outside the scope of what it was asked to do. Most of it is about the
@@ -361,7 +382,19 @@ not being fixed now, and concerns the repository rather than the session — and
 never for stylistic preferences, speculative refactoring, or anything already
 covered by work in progress. It requires a `backlog search` before every `add`,
 and requires file references whenever the finding is tied to a location in the
-code.
+code. The same search can turn up a task the current change has already fixed,
+or an exact duplicate of what was about to be filed; the skill closes or
+deletes that one on the spot rather than leaving it for a triage that may not
+come soon, but only for those two unambiguous cases — anything else stays for
+`backlog-triage` to judge.
+
+**`backlog-sort`** — a narrow, mechanical pass over `todo` and `doing` tasks: for
+each one, has anything touched its recorded files since the commit it was
+captured on, and if so, does the finding still hold? It only ever closes a task
+the branch has demonstrably already fixed; it never declines, reprioritises, or
+promotes. That restriction is what makes it safe to run often — including from
+the `SessionStart` hook below — without a human standing over it, clearing the
+obvious cases so a fuller triage isn't needed just to see what's still open.
 
 **`backlog-triage`** — the cold path. It fires when someone asks for the backlog
 to be reviewed. It reads the accumulated tasks, checks whether each still holds
@@ -372,7 +405,8 @@ and records the resulting link as a free-form reference.
 The skills are stamped with the version of the binary that wrote them.
 `backlog validate` warns when they fall behind, and `backlog init` brings them
 up to date. A skill you have edited locally is never silently overwritten — it
-is skipped, and only `backlog init --force` replaces it.
+is skipped, and only `backlog init --force` replaces it. The two installed
+hooks (see `backlog init` above) are versioned and preserved the same way.
 
 ## Development
 
