@@ -367,6 +367,54 @@ func TestPatchUnknownTaskNotFound(t *testing.T) {
 	}
 }
 
+func TestDeleteTaskRemovesFileAndReportsIt(t *testing.T) {
+	st := newTestStore(t)
+	keep := addTask(t, st, "keep me", task.StatusTodo, task.PriorityMedium, nil)
+	drop := addTask(t, st, "delete me", task.StatusTodo, task.PriorityHigh, nil)
+	h := newTestMux(t, st)
+
+	w := doJSON(t, h, http.MethodDelete, "/api/tasks/"+itoa(drop.ID), nil)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, body %s", w.Code, w.Body.String())
+	}
+	got := decodeBody[taskview.TaskView](t, w)
+	if got.ID != drop.ID || got.Title != "delete me" {
+		t.Errorf("response = %+v, want the removed task %d", got, drop.ID)
+	}
+
+	if _, err := st.Find(drop.ID); err == nil {
+		t.Errorf("task %d still in the store after delete", drop.ID)
+	}
+	if _, err := st.Find(keep.ID); err != nil {
+		t.Errorf("unrelated task %d disappeared: %v", keep.ID, err)
+	}
+
+	list := doJSON(t, h, http.MethodGet, "/api/tasks?all=1", nil)
+	for _, v := range decodeBody[[]taskview.TaskView](t, list) {
+		if v.ID == drop.ID {
+			t.Errorf("GET /api/tasks still lists the deleted task %d", drop.ID)
+		}
+	}
+}
+
+func TestDeleteUnknownTaskNotFound(t *testing.T) {
+	st := newTestStore(t)
+	keep := addTask(t, st, "keep me", task.StatusTodo, task.PriorityMedium, nil)
+	h := newTestMux(t, st)
+
+	w := doJSON(t, h, http.MethodDelete, "/api/tasks/999", nil)
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want 404, body %s", w.Code, w.Body.String())
+	}
+	var env errorEnvelope
+	if err := json.Unmarshal(w.Body.Bytes(), &env); err != nil || env.Error == "" {
+		t.Fatalf("body = %q, want a non-empty JSON error envelope", w.Body.String())
+	}
+	if _, err := st.Find(keep.ID); err != nil {
+		t.Errorf("task %d was removed by a delete of an unknown id: %v", keep.ID, err)
+	}
+}
+
 func TestErrorEnvelopeStatusCodes(t *testing.T) {
 	h := newTestMux(t, newTestStore(t))
 

@@ -47,6 +47,7 @@ interface EditFormProps {
   onCancel: () => void;
   onCreate: (body: CreateTaskBody) => void;
   onPatch: (body: PatchTaskBody) => void;
+  onDelete?: () => void;
 }
 
 export function EditForm({
@@ -56,6 +57,7 @@ export function EditForm({
   onCancel,
   onCreate,
   onPatch,
+  onDelete,
 }: EditFormProps) {
   const isCreate = mode === "create";
   const [draft, setDraft] = useState<Draft>(() => draftFor(task));
@@ -213,6 +215,11 @@ export function EditForm({
         <button className="btn btn-secondary" onClick={onCancel}>
           Cancel
         </button>
+        {!isCreate && onDelete ? (
+          <button className="btn btn-danger" onClick={onDelete}>
+            Delete
+          </button>
+        ) : null}
       </div>
     </>
   );

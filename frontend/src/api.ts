@@ -108,6 +108,10 @@ export function patchTask(id: number, body: PatchTaskBody): Promise<TaskView> {
   return api<TaskView>("/api/tasks/" + id, jsonBody("PATCH", body));
 }
 
+export function deleteTask(id: number): Promise<TaskView> {
+  return api<TaskView>("/api/tasks/" + id, { method: "DELETE" });
+}
+
 export function getRepo(): Promise<RepoInfo> {
   return api<RepoInfo>("/api/repo");
 }

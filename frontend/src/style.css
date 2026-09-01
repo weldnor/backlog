@@ -161,6 +161,9 @@ button, input, textarea { font-family: inherit; }
 .btn-secondary:hover { background: color-mix(in srgb, var(--color-text) 7%, transparent); }
 .btn-secondary:active { background: color-mix(in srgb, var(--color-text) 14%, transparent); }
 .btn-secondary.is-active { background: var(--color-text); color: var(--color-bg); }
+.btn-danger { border-color: var(--color-accent); color: var(--color-accent-700); }
+.btn-danger:hover { background: var(--color-accent); color: #fff; }
+.btn-danger:active { background: var(--color-accent-700); color: #fff; }
 .btn-ghost { color: var(--color-accent); padding-inline: var(--space-1); background: none; border: none; }
 .btn-ghost:hover { background: color-mix(in srgb, var(--color-accent) 10%, transparent); }
 .btn-icon { width: 36px; height: 36px; padding: 0; }

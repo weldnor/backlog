@@ -30,6 +30,7 @@ func newMux(st *store.Store, opts Options) (*http.ServeMux, error) {
 	mux.HandleFunc("POST /api/tasks", handleCreateTask(st))
 	mux.HandleFunc("GET /api/tasks/{id}", handleGetTask(st))
 	mux.HandleFunc("PATCH /api/tasks/{id}", handlePatchTask(st))
+	mux.HandleFunc("DELETE /api/tasks/{id}", handleDeleteTask(st))
 	mux.Handle("/", http.FileServer(http.FS(assets)))
 	return mux, nil
 }
@@ -73,6 +74,25 @@ func handleGetTask(st *store.Store) http.HandlerFunc {
 			return
 		}
 		t, err := st.Find(id)
+		if err != nil {
+			writeError(w, http.StatusNotFound, err.Error())
+			return
+		}
+		writeJSON(w, taskview.View(t))
+	}
+}
+
+// handleDeleteTask removes a task's file exactly as `backlog rm` does, reusing
+// Store.Remove, and reports the removed task's view. An unknown id surfaces as
+// the same 404 handleGetTask returns, since Store.Remove calls Find internally.
+func handleDeleteTask(st *store.Store) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id, err := pathID(r)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		t, err := st.Remove(id)
 		if err != nil {
 			writeError(w, http.StatusNotFound, err.Error())
 			return

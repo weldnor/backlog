@@ -18,6 +18,7 @@ interface TaskDialogProps {
   onCancelEdit: () => void;
   onCreate: (body: CreateTaskBody) => void;
   onPatch: (body: PatchTaskBody) => void;
+  onDelete: () => void;
 }
 
 const FOCUSABLE =
@@ -107,6 +108,11 @@ export function TaskDialog(props: TaskDialogProps) {
       <div className="dialog-head">
         <span className="filename">{task ? taskFilePath(task) : ""}</span>
         <div className="topbar-spacer" />
+        {editing ? null : (
+          <button className="btn btn-danger" onClick={props.onDelete}>
+            Delete
+          </button>
+        )}
         <button
           className={"btn btn-secondary" + (editing ? " is-active" : "")}
           onClick={onToggleEdit}
@@ -149,6 +155,7 @@ export function TaskDialog(props: TaskDialogProps) {
               onCancel={onCancelEdit}
               onCreate={props.onCreate}
               onPatch={props.onPatch}
+              onDelete={props.onDelete}
             />
           ) : (
             <ReadView task={task} />

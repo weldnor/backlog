@@ -76,6 +76,11 @@ function fakeFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Respon
       if (t) Object.assign(t, body);
       return json(t);
     }
+    if (method === "DELETE") {
+      if (!t) return json({ error: "not found" }, 404);
+      tasksState = tasksState.filter((x) => x.id !== id);
+      return json(t);
+    }
   }
   if (url.startsWith("/api/tasks") && method === "GET") {
     listCalls++;
@@ -241,6 +246,56 @@ describe("App", () => {
       await screen.findByText(/declining a task requires a reason/),
     ).toBeInTheDocument();
     expect(screen.getByRole("dialog")).toBeInTheDocument();
+  });
+
+  it("deletes a task from the read view after confirming, closing the dialog", async () => {
+    const user = userEvent.setup();
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+    render(<App />);
+    await within(listView()).findByText("Alpha bug");
+    await user.click(within(listView()).getByText("Alpha bug").closest("tr") as HTMLTableRowElement);
+    await screen.findByRole("dialog");
+
+    await user.click(screen.getByRole("button", { name: /^Delete/ }));
+
+    expect(confirmSpy).toHaveBeenCalledWith(
+      'Delete task #1 "Alpha bug"? This cannot be undone.',
+    );
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+    );
+    await waitFor(() =>
+      expect(within(listView()).queryByText("Alpha bug")).not.toBeInTheDocument(),
+    );
+    expect(within(listView()).getByText("Beta chore")).toBeInTheDocument();
+  });
+
+  it("leaves the task and dialog in place when the delete confirm is cancelled", async () => {
+    const user = userEvent.setup();
+    vi.spyOn(window, "confirm").mockReturnValue(false);
+    render(<App />);
+    await within(listView()).findByText("Alpha bug");
+    await user.click(within(listView()).getByText("Alpha bug").closest("tr") as HTMLTableRowElement);
+    await screen.findByRole("dialog");
+
+    await user.click(screen.getByRole("button", { name: /^Delete/ }));
+
+    await new Promise((r) => setTimeout(r, 0));
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(within(listView()).getByText("Alpha bug")).toBeInTheDocument();
+  });
+
+  it("offers a Delete action in both the read and the edit view", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await within(listView()).findByText("Alpha bug");
+    await user.click(within(listView()).getByText("Alpha bug").closest("tr") as HTMLTableRowElement);
+    await screen.findByRole("dialog");
+
+    expect(screen.getByRole("button", { name: /^Delete/ })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /^EDIT/ }));
+    expect(screen.getByRole("button", { name: /^Delete/ })).toBeInTheDocument();
   });
 
   it("renders the board with a card per column and verbatim empty notes", async () => {

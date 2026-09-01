@@ -2,6 +2,7 @@ import { useEffect, useMemo, useReducer, useState } from "react";
 
 import {
   createTask,
+  deleteTask,
   getRepo,
   getTask,
   patchTask,
@@ -179,6 +180,23 @@ export function App() {
       .catch((err) => dispatch({ type: "set_error", error: message(err) }));
   }
 
+  // handleDelete removes the open task after a naming confirmation. Like
+  // handleMove it closes over state.openTask rather than any edit-mode draft, so
+  // it works identically from the read and edit views.
+  function handleDelete() {
+    const t = state.openTask;
+    if (!t) return;
+    if (!window.confirm(`Delete task #${t.id} "${t.title}"? This cannot be undone.`)) {
+      return;
+    }
+    deleteTask(t.id)
+      .then(() => {
+        dispatch({ type: "close" });
+        return refresh();
+      })
+      .catch((err) => dispatch({ type: "set_error", error: message(err) }));
+  }
+
   // handleMove applies a board drag-and-drop: it performs the same status edit
   // the dialog performs, independent of whichever task the dialog has open.
   function handleMove(id: number, status: string) {
@@ -255,6 +273,7 @@ export function App() {
           onCancelEdit={() => dispatch({ type: "leave_edit" })}
           onCreate={handleCreate}
           onPatch={handlePatch}
+          onDelete={handleDelete}
         />
       ) : null}
     </div>
