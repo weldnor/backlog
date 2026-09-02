@@ -11,7 +11,6 @@ import (
 	"path/filepath"
 	"sort"
 
-	"github.com/weldnor/backlog/internal/hooks"
 	"github.com/weldnor/backlog/internal/skills"
 	"github.com/weldnor/backlog/internal/store"
 	"github.com/weldnor/backlog/internal/task"
@@ -113,9 +112,6 @@ func check(st *store.Store, version string) ([]Finding, error) {
 		return nil, err
 	}
 	if err := checkSkills(c, st, version); err != nil {
-		return nil, err
-	}
-	if err := checkHooks(c, st, version); err != nil {
 		return nil, err
 	}
 
@@ -226,22 +222,6 @@ func checkSkills(c *collector, st *store.Store, version string) error {
 		c.add(task.SeverityWarning, c.rel(s.Path), false,
 			"the %s skill was written by backlog v%s but this is v%s; refresh it with 'backlog init'",
 			s.Name, string(s.Action), version)
-	}
-	return nil
-}
-
-func checkHooks(c *collector, st *store.Store, version string) error {
-	if version == "" {
-		return nil
-	}
-	stale, err := hooks.Stale(st.Project, version)
-	if err != nil {
-		return err
-	}
-	for _, h := range stale {
-		c.add(task.SeverityWarning, c.rel(filepath.Join(st.Project, filepath.FromSlash(hooks.SettingsPath))), false,
-			"the %s hook was written by backlog v%s but this is v%s; refresh it with 'backlog init'",
-			h.ID, string(h.Action), version)
 	}
 	return nil
 }
