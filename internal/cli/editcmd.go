@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/weldnor/backlog/internal/hooks"
 	"github.com/weldnor/backlog/internal/task"
 )
 
@@ -70,6 +71,7 @@ func runEdit(env Env, args []string) error {
 	if err := st.Save(t); err != nil {
 		return err
 	}
+	hooks.Run(env.Stderr, st.Root, st.Project, hooks.PostEdit, t, nil)
 
 	if *asJSON {
 		return writeJSON(env.Stdout, view(t))

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/weldnor/backlog/internal/hooks"
 	"github.com/weldnor/backlog/internal/store"
 	"github.com/weldnor/backlog/internal/task"
 )
@@ -50,7 +51,7 @@ func runTagRm(env Env, args []string) error {
 	if err != nil {
 		return err
 	}
-	changed, err := updateTags(st, func(t *task.Task) bool {
+	changed, err := updateTags(env, st, func(t *task.Task) bool {
 		if !t.HasTag(name) {
 			return false
 		}
@@ -93,7 +94,7 @@ func runTagRename(env Env, args []string) error {
 	if err != nil {
 		return err
 	}
-	changed, err := updateTags(st, func(t *task.Task) bool {
+	changed, err := updateTags(env, st, func(t *task.Task) bool {
 		if !t.HasTag(oldName) {
 			return false
 		}
@@ -118,8 +119,10 @@ func runTagRename(env Env, args []string) error {
 
 // updateTags applies mutate to every task in the store, saving and collecting
 // those it reports changing. Tasks are visited in ascending identifier order,
-// the same order every other listing uses.
-func updateTags(st *store.Store, mutate func(*task.Task) bool) ([]*task.Task, error) {
+// the same order every other listing uses. A tag change is content, not
+// workflow state, so it fires the same post-edit hook `backlog edit` does —
+// once per task it actually changed.
+func updateTags(env Env, st *store.Store, mutate func(*task.Task) bool) ([]*task.Task, error) {
 	tasks, err := st.Tasks()
 	if err != nil {
 		return nil, err
@@ -133,6 +136,7 @@ func updateTags(st *store.Store, mutate func(*task.Task) bool) ([]*task.Task, er
 		if err := st.Save(t); err != nil {
 			return nil, err
 		}
+		hooks.Run(env.Stderr, st.Root, st.Project, hooks.PostEdit, t, nil)
 		changed = append(changed, t)
 	}
 	return changed, nil

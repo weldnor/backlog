@@ -817,3 +817,74 @@ func TestBrowseAPIMatchesCLI(t *testing.T) {
 		t.Errorf("validate exited %d after the browse-driven round trip: %s", got.code, got.stdout+got.stderr)
 	}
 }
+
+// TestHooksFireOnLifecycleEvents drives the real binary against a project
+// with a post-add and a post-set hook installed, and checks that each fires
+// with the environment and stdin the hook README promises. Hook scripts are
+// shell here because that is what a Unix CI runner has; the interpreter
+// selection itself (.ps1, .cmd, bare-with-shebang) is covered directly by
+// internal/hooks, which is where the cross-platform logic lives.
+func TestHooksFireOnLifecycleEvents(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("this test's hook scripts are shell; internal/hooks covers Windows shapes directly")
+	}
+	dir := t.TempDir()
+	mustBacklog(t, dir, "init")
+
+	hooksDir := filepath.Join(dir, ".backlog", "hooks")
+	addLog := filepath.Join(dir, "post-add.log")
+	setLog := filepath.Join(dir, "post-set.log")
+
+	writeHook := func(name, body string) {
+		if err := os.WriteFile(filepath.Join(hooksDir, name), []byte(body), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	writeHook("post-add", "#!/bin/sh\n"+
+		"printf '%s %s %s\\n' \"$BACKLOG_EVENT\" \"$BACKLOG_TASK_ID\" \"$BACKLOG_TASK_TITLE\" > \""+addLog+"\"\n"+
+		"cat > \""+addLog+".stdin\"\n")
+	writeHook("post-set", "#!/bin/sh\n"+
+		"printf '%s %s %s->%s\\n' \"$BACKLOG_EVENT\" \"$BACKLOG_TASK_ID\" \"$BACKLOG_PREVIOUS_STATUS\" \"$BACKLOG_TASK_STATUS\" > \""+setLog+"\"\n")
+
+	out := mustBacklog(t, dir, "add", "Something to fix")
+	if !strings.Contains(out, "created 001") {
+		t.Fatalf("add did not report success: %s", out)
+	}
+
+	got, err := os.ReadFile(addLog)
+	if err != nil {
+		t.Fatalf("post-add hook did not run: %v", err)
+	}
+	if want := "post-add 1 Something to fix\n"; string(got) != want {
+		t.Errorf("post-add saw %q, want %q", got, want)
+	}
+	stdin, err := os.ReadFile(addLog + ".stdin")
+	if err != nil {
+		t.Fatalf("post-add hook did not receive stdin: %v", err)
+	}
+	var fromHook taskJSON
+	unmarshal(t, string(stdin), &fromHook)
+	if fromHook.Title != "Something to fix" {
+		t.Errorf("stdin task title = %q", fromHook.Title)
+	}
+
+	mustBacklog(t, dir, "set", "1", "todo")
+	got, err = os.ReadFile(setLog)
+	if err != nil {
+		t.Fatalf("post-set hook did not run: %v", err)
+	}
+	if want := "post-set 1 new->todo\n"; string(got) != want {
+		t.Errorf("post-set saw %q, want %q", got, want)
+	}
+
+	// A hook is a side effect: a failing one is reported, but the command it
+	// rides on still succeeds.
+	writeHook("post-rm", "#!/bin/sh\nexit 7\n")
+	res := backlog(t, dir, "rm", "1")
+	if res.code != 0 {
+		t.Fatalf("rm failed because its hook failed: code=%d stderr=%s", res.code, res.stderr)
+	}
+	if !strings.Contains(res.stderr, "post-rm hook failed") {
+		t.Errorf("stderr did not report the failing hook: %s", res.stderr)
+	}
+}

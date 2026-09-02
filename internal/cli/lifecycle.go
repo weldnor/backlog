@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/weldnor/backlog/internal/hooks"
 	"github.com/weldnor/backlog/internal/store"
 	"github.com/weldnor/backlog/internal/task"
 )
@@ -55,6 +56,7 @@ func runAdd(env Env, args []string) error {
 	if err := st.Create(t); err != nil {
 		return err
 	}
+	hooks.Run(env.Stderr, st.Root, st.Project, hooks.PostAdd, t, nil)
 
 	if *asJSON {
 		return writeJSON(env.Stdout, view(t))
@@ -258,6 +260,7 @@ func runSet(env Env, args []string) error {
 		return usagef("task %d is %s, not %s; --reason applies only to a %s task",
 			t.ID, t.Status, task.StatusDeclined, task.StatusDeclined)
 	}
+	prevStatus, prevPriority := t.Status, t.Priority
 	if *status != "" {
 		// Leaving declined drops the reason: it describes a state the task is
 		// no longer in, and git keeps what it said.
@@ -281,6 +284,10 @@ func runSet(env Env, args []string) error {
 	if err := st.Save(t); err != nil {
 		return err
 	}
+	hooks.Run(env.Stderr, st.Root, st.Project, hooks.PostSet, t, map[string]string{
+		"BACKLOG_PREVIOUS_STATUS":   prevStatus,
+		"BACKLOG_PREVIOUS_PRIORITY": prevPriority,
+	})
 
 	if *asJSON {
 		return writeJSON(env.Stdout, view(t))
@@ -308,6 +315,7 @@ func runRm(env Env, args []string) error {
 	if err != nil {
 		return err
 	}
+	hooks.Run(env.Stderr, st.Root, st.Project, hooks.PostRemove, t, nil)
 
 	if *asJSON {
 		return writeJSON(env.Stdout, view(t))

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"path/filepath"
@@ -11,10 +12,22 @@ import (
 	"strings"
 	"time"
 
+	"github.com/weldnor/backlog/internal/hooks"
 	"github.com/weldnor/backlog/internal/store"
 	"github.com/weldnor/backlog/internal/task"
 	"github.com/weldnor/backlog/internal/taskview"
 )
+
+// hookDiag returns the writer hook diagnostics go to: opts.Log if the caller
+// gave one, discarded otherwise. A hook's own success or failure is not
+// something an HTTP client can be handed inline, so it goes wherever browse's
+// other best-effort diagnostics go.
+func hookDiag(opts Options) io.Writer {
+	if opts.Log == nil {
+		return io.Discard
+	}
+	return opts.Log.Writer()
+}
 
 // newMux builds the server's routes: the JSON API under /api and the
 // embedded web UI everywhere else.
@@ -27,10 +40,10 @@ func newMux(st *store.Store, opts Options) (*http.ServeMux, error) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/repo", handleRepoInfo(st, opts))
 	mux.HandleFunc("GET /api/tasks", handleListTasks(st))
-	mux.HandleFunc("POST /api/tasks", handleCreateTask(st))
+	mux.HandleFunc("POST /api/tasks", handleCreateTask(st, opts))
 	mux.HandleFunc("GET /api/tasks/{id}", handleGetTask(st))
-	mux.HandleFunc("PATCH /api/tasks/{id}", handlePatchTask(st))
-	mux.HandleFunc("DELETE /api/tasks/{id}", handleDeleteTask(st))
+	mux.HandleFunc("PATCH /api/tasks/{id}", handlePatchTask(st, opts))
+	mux.HandleFunc("DELETE /api/tasks/{id}", handleDeleteTask(st, opts))
 	mux.Handle("/", http.FileServer(http.FS(assets)))
 	return mux, nil
 }
@@ -85,7 +98,7 @@ func handleGetTask(st *store.Store) http.HandlerFunc {
 // handleDeleteTask removes a task's file exactly as `backlog rm` does, reusing
 // Store.Remove, and reports the removed task's view. An unknown id surfaces as
 // the same 404 handleGetTask returns, since Store.Remove calls Find internally.
-func handleDeleteTask(st *store.Store) http.HandlerFunc {
+func handleDeleteTask(st *store.Store, opts Options) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id, err := pathID(r)
 		if err != nil {
@@ -97,6 +110,7 @@ func handleDeleteTask(st *store.Store) http.HandlerFunc {
 			writeError(w, http.StatusNotFound, err.Error())
 			return
 		}
+		hooks.Run(hookDiag(opts), st.Root, st.Project, hooks.PostRemove, t, nil)
 		writeJSON(w, taskview.View(t))
 	}
 }
@@ -112,7 +126,7 @@ type createRequest struct {
 	Refs        []string `json:"refs"`
 }
 
-func handleCreateTask(st *store.Store) http.HandlerFunc {
+func handleCreateTask(st *store.Store, opts Options) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req createRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -149,6 +163,7 @@ func handleCreateTask(st *store.Store) http.HandlerFunc {
 			writeError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
+		hooks.Run(hookDiag(opts), st.Root, st.Project, hooks.PostAdd, t, nil)
 		writeJSONStatus(w, http.StatusCreated, taskview.View(t))
 	}
 }
@@ -166,7 +181,7 @@ type patchRequest struct {
 	Refs        *[]string `json:"refs"`
 }
 
-func handlePatchTask(st *store.Store) http.HandlerFunc {
+func handlePatchTask(st *store.Store, opts Options) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id, err := pathID(r)
 		if err != nil {
@@ -185,6 +200,7 @@ func handlePatchTask(st *store.Store) http.HandlerFunc {
 			return
 		}
 
+		prevStatus, prevPriority := t.Status, t.Priority
 		if err := applyPatch(t, req); err != nil {
 			writeError(w, http.StatusBadRequest, err.Error())
 			return
@@ -192,6 +208,20 @@ func handlePatchTask(st *store.Store) http.HandlerFunc {
 		if err := st.Save(t); err != nil {
 			writeError(w, http.StatusInternalServerError, err.Error())
 			return
+		}
+		// A PATCH can carry both workflow fields (status, priority, reason,
+		// refs) and content fields (title, description, tags) in one
+		// request, so it fires whichever of the CLI's two hooks match what
+		// actually changed - the same events `set` and `edit` fire, just
+		// possibly both at once here.
+		if req.Status != nil || req.Priority != nil || req.Reason != nil || req.Refs != nil {
+			hooks.Run(hookDiag(opts), st.Root, st.Project, hooks.PostSet, t, map[string]string{
+				"BACKLOG_PREVIOUS_STATUS":   prevStatus,
+				"BACKLOG_PREVIOUS_PRIORITY": prevPriority,
+			})
+		}
+		if req.Title != nil || req.Description != nil || req.Tags != nil {
+			hooks.Run(hookDiag(opts), st.Root, st.Project, hooks.PostEdit, t, nil)
 		}
 		writeJSON(w, taskview.View(t))
 	}
