@@ -66,19 +66,32 @@ func Discover(start string) (*Store, error) {
 // Init, and never overwritten - a project is free to replace it, and re-init
 // must not clobber that.
 const hooksReadme = `Drop a script here named for the event it should run on, and backlog will
-run it after that event, with no configuration beyond the file existing:
+run it, with no configuration beyond the file existing. Two kinds:
 
     post-add    after ` + "`backlog add`" + ` creates a task
     post-set    after ` + "`backlog set`" + ` changes status, priority, reason or refs
     post-edit   after ` + "`backlog edit`" + ` or ` + "`backlog tag`" + ` changes title, description or tags
     post-rm     after ` + "`backlog rm`" + ` deletes a task
 
-A hook is best-effort: it can observe a change, never block or undo one, so a
-failing or missing hook never fails the backlog command that triggered it.
+    pre-add     before add; a non-zero exit stops the task from being created
+    pre-set     before set; a non-zero exit stops the change
+    pre-edit    before edit or tag; a non-zero exit stops the change
+    pre-rm      before rm; a non-zero exit stops the task from being deleted
+
+A post- hook is best-effort: it can observe a change, never block or undo
+one, so a failing or missing post- hook never fails the backlog command that
+triggered it. A pre- hook is a gate: it runs before anything is written, and
+a non-zero exit - or a hook that exists but could not be run at all, such as
+a .ps1 with no PowerShell installed - aborts the command with nothing
+changed and reports why.
 
 The task is passed as JSON on stdin and as BACKLOG_TASK_* environment
 variables (ID, TITLE, STATUS, PRIORITY, TAGS, FILE), alongside BACKLOG_EVENT,
-BACKLOG_ROOT and BACKLOG_PROJECT.
+BACKLOG_ROOT and BACKLOG_PROJECT. For pre-add, the id and file are not yet
+assigned, since add claims them atomically as it writes the task; both
+variables are empty there. pre-set and pre-edit also carry BACKLOG_NEW_*
+variables describing the change being proposed (e.g. BACKLOG_NEW_STATUS),
+alongside the task's current, unmodified state.
 
 To work on both Linux and Windows without maintaining two scripts, name the
 file for how it should run - the first one found for an event wins:

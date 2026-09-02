@@ -29,6 +29,23 @@ func hookDiag(opts Options) io.Writer {
 	return opts.Log.Writer()
 }
 
+// deref reads a patchRequest string pointer, treating "not supplied" the same
+// as "supplied empty" - fine for a hook's BACKLOG_NEW_* variable, which only
+// distinguishes those for fields applyPatch itself validates.
+func deref(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
+}
+
+func derefSlice(s *[]string) []string {
+	if s == nil {
+		return nil
+	}
+	return *s
+}
+
 // newMux builds the server's routes: the JSON API under /api and the
 // embedded web UI everywhere else.
 func newMux(st *store.Store, opts Options) (*http.ServeMux, error) {
@@ -105,9 +122,17 @@ func handleDeleteTask(st *store.Store, opts Options) http.HandlerFunc {
 			writeError(w, http.StatusBadRequest, err.Error())
 			return
 		}
-		t, err := st.Remove(id)
+		t, err := st.Find(id)
 		if err != nil {
 			writeError(w, http.StatusNotFound, err.Error())
+			return
+		}
+		if err := hooks.RunPre(hookDiag(opts), st.Root, st.Project, hooks.PreRemove, t, nil); err != nil {
+			writeError(w, http.StatusConflict, err.Error())
+			return
+		}
+		if _, err := st.Remove(id); err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
 		hooks.Run(hookDiag(opts), st.Root, st.Project, hooks.PostRemove, t, nil)
@@ -159,6 +184,10 @@ func handleCreateTask(st *store.Store, opts Options) http.HandlerFunc {
 		// author: human".
 		t := task.New(title, req.Description, req.Tags, req.Files, req.Refs,
 			task.AuthorHuman, priority, store.Provenance(st.Project), time.Now())
+		if err := hooks.RunPre(hookDiag(opts), st.Root, st.Project, hooks.PreAdd, t, nil); err != nil {
+			writeError(w, http.StatusConflict, err.Error())
+			return
+		}
 		if err := st.Create(t); err != nil {
 			writeError(w, http.StatusInternalServerError, err.Error())
 			return
@@ -201,6 +230,29 @@ func handlePatchTask(st *store.Store, opts Options) http.HandlerFunc {
 		}
 
 		prevStatus, prevPriority := t.Status, t.Priority
+		// Pre-hooks run against t as it stands now, before applyPatch touches
+		// it, mirroring the same split the CLI's `set` and `edit` make.
+		if req.Status != nil || req.Priority != nil || req.Reason != nil || req.Refs != nil {
+			if err := hooks.RunPre(hookDiag(opts), st.Root, st.Project, hooks.PreSet, t, map[string]string{
+				"BACKLOG_NEW_STATUS":   deref(req.Status),
+				"BACKLOG_NEW_PRIORITY": deref(req.Priority),
+				"BACKLOG_NEW_REASON":   deref(req.Reason),
+				"BACKLOG_NEW_REFS":     strings.Join(derefSlice(req.Refs), ","),
+			}); err != nil {
+				writeError(w, http.StatusConflict, err.Error())
+				return
+			}
+		}
+		if req.Title != nil || req.Description != nil || req.Tags != nil {
+			if err := hooks.RunPre(hookDiag(opts), st.Root, st.Project, hooks.PreEdit, t, map[string]string{
+				"BACKLOG_NEW_TITLE":       deref(req.Title),
+				"BACKLOG_NEW_DESCRIPTION": deref(req.Description),
+				"BACKLOG_NEW_TAGS":        strings.Join(derefSlice(req.Tags), ","),
+			}); err != nil {
+				writeError(w, http.StatusConflict, err.Error())
+				return
+			}
+		}
 		if err := applyPatch(t, req); err != nil {
 			writeError(w, http.StatusBadRequest, err.Error())
 			return

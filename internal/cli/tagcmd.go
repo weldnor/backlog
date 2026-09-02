@@ -51,12 +51,11 @@ func runTagRm(env Env, args []string) error {
 	if err != nil {
 		return err
 	}
-	changed, err := updateTags(env, st, func(t *task.Task) bool {
+	changed, err := updateTags(env, st, func(t *task.Task) ([]string, bool) {
 		if !t.HasTag(name) {
-			return false
+			return nil, false
 		}
-		t.Tags = withoutTag(t.Tags, name)
-		return true
+		return withoutTag(t.Tags, name), true
 	})
 	if err != nil {
 		return err
@@ -94,14 +93,13 @@ func runTagRename(env Env, args []string) error {
 	if err != nil {
 		return err
 	}
-	changed, err := updateTags(env, st, func(t *task.Task) bool {
+	changed, err := updateTags(env, st, func(t *task.Task) ([]string, bool) {
 		if !t.HasTag(oldName) {
-			return false
+			return nil, false
 		}
 		// NormalizeTags drops the duplicate this creates when a task already
 		// carries newName under a different case, or both spellings at once.
-		t.Tags = task.NormalizeTags(append(withoutTag(t.Tags, oldName), newName))
-		return true
+		return task.NormalizeTags(append(withoutTag(t.Tags, oldName), newName)), true
 	})
 	if err != nil {
 		return err
@@ -119,10 +117,15 @@ func runTagRename(env Env, args []string) error {
 
 // updateTags applies mutate to every task in the store, saving and collecting
 // those it reports changing. Tasks are visited in ascending identifier order,
-// the same order every other listing uses. A tag change is content, not
-// workflow state, so it fires the same post-edit hook `backlog edit` does —
-// once per task it actually changed.
-func updateTags(env Env, st *store.Store, mutate func(*task.Task) bool) ([]*task.Task, error) {
+// the same order every other listing uses. mutate computes the resulting tag
+// list without touching t, so t still reflects the task's current state when
+// the pre-edit hook runs; a decline leaves it untouched, matching `edit`. A
+// tag change is content, not workflow state, so it fires the same pre-edit
+// and post-edit hooks `backlog edit` does — once per task it actually
+// changes. A decline aborts the whole command: tasks already saved by an
+// earlier iteration stay changed, the way a `st.Save` failure already leaves
+// the loop.
+func updateTags(env Env, st *store.Store, mutate func(*task.Task) ([]string, bool)) ([]*task.Task, error) {
 	tasks, err := st.Tasks()
 	if err != nil {
 		return nil, err
@@ -130,9 +133,18 @@ func updateTags(env Env, st *store.Store, mutate func(*task.Task) bool) ([]*task
 	task.SortByID(tasks)
 	var changed []*task.Task
 	for _, t := range tasks {
-		if !mutate(t) {
+		newTags, ok := mutate(t)
+		if !ok {
 			continue
 		}
+		if err := hooks.RunPre(env.Stderr, st.Root, st.Project, hooks.PreEdit, t, map[string]string{
+			"BACKLOG_NEW_TITLE":       "",
+			"BACKLOG_NEW_DESCRIPTION": "",
+			"BACKLOG_NEW_TAGS":        strings.Join(newTags, ","),
+		}); err != nil {
+			return nil, err
+		}
+		t.Tags = newTags
 		if err := st.Save(t); err != nil {
 			return nil, err
 		}

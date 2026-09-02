@@ -1,9 +1,15 @@
 // Package hooks lets a backlog run an external script when a task is added or
 // changed — the mechanism a planning system, a chat notification or a custom
 // sync can hang off, without the backlog binary knowing anything exists on
-// the other end. It is deliberately best-effort: a hook can observe a change,
-// never block or undo one, so a missing interpreter or a failing script never
-// turns a successful `backlog` command into a failed one.
+// the other end.
+//
+// There are two kinds. A post-<event> hook (Run) is best-effort: it observes
+// a change that already happened, so a missing interpreter or a failing
+// script never turns a successful `backlog` command into a failed one. A
+// pre-<event> hook (RunPre) is a gate: it runs before anything is written,
+// and a non-zero exit — or a hook that exists but could not be run at all —
+// aborts the command with nothing changed. The two share exactly the same
+// script-resolution rules; only what a failure means differs.
 package hooks
 
 import (
@@ -28,12 +34,20 @@ const DirName = "hooks"
 
 // Event names a point in a task's lifecycle a hook can be written for. They
 // name commands, not internal states, so a script author can predict which
-// one fires from the command they ran.
+// one fires from the command they ran. Each post-<event> has a pre-<event>
+// counterpart that runs first and can veto it.
 const (
-	PostAdd    = "post-add"  // after `backlog add` creates a task
-	PostSet    = "post-set"  // after `backlog set` changes status, priority, reason or refs
-	PostEdit   = "post-edit" // after `backlog edit` or `backlog tag` changes title, description or tags
-	PostRemove = "post-rm"   // after `backlog rm` deletes a task
+	PreAdd  = "pre-add"  // before `backlog add` creates a task
+	PostAdd = "post-add" // after `backlog add` creates a task
+
+	PreSet  = "pre-set"  // before `backlog set` changes status, priority, reason or refs
+	PostSet = "post-set" // after `backlog set` changes status, priority, reason or refs
+
+	PreEdit  = "pre-edit"  // before `backlog edit` or `backlog tag` changes title, description or tags
+	PostEdit = "post-edit" // after `backlog edit` or `backlog tag` changes title, description or tags
+
+	PreRemove  = "pre-rm"  // before `backlog rm` deletes a task
+	PostRemove = "post-rm" // after `backlog rm` deletes a task
 )
 
 // Dir returns the hooks directory under a backlog root (Store.Root).
@@ -46,6 +60,9 @@ func Dir(root string) string { return filepath.Join(root, DirName) }
 // command that triggered it succeeded. A nil diag discards them. extra adds
 // further BACKLOG_-style environment variables (e.g. what changed) on top of
 // the ones every event gets.
+//
+// Run is for post-<event> hooks. A pre-<event> hook that can abort the
+// command is RunPre.
 func Run(diag io.Writer, root, project, event string, t *task.Task, extra map[string]string) {
 	if diag == nil {
 		diag = io.Discard
@@ -61,7 +78,45 @@ func Run(diag io.Writer, root, project, event string, t *task.Task, extra map[st
 	if note != "" {
 		fmt.Fprintf(diag, "backlog: %s hook: %s\n", event, note)
 	}
+	if err := execute(cmd, diag, root, project, event, t, extra); err != nil {
+		fmt.Fprintf(diag, "backlog: %s hook failed: %v\n", event, err)
+	}
+}
 
+// RunPre looks up the hook for event under root and, if one is configured,
+// runs it against t before the operation it guards is allowed to proceed. A
+// non-nil error means the operation must not happen: either the hook
+// declined it (a non-zero exit), or a hook file exists but could not be run
+// at all (missing interpreter, not executable). The latter still blocks,
+// unlike Run, because a pre-hook that silently failed to run would make it
+// look like something is guarding an operation when nothing is - worse than
+// no hook at all. Whatever the hook itself printed while explaining its
+// decision has already reached diag by the time RunPre returns; the error
+// itself is the short, single-line reason for a caller that only wants that.
+func RunPre(diag io.Writer, root, project, event string, t *task.Task, extra map[string]string) error {
+	if diag == nil {
+		diag = io.Discard
+	}
+	cmd, note, err := resolve(Dir(root), event)
+	if err != nil {
+		return fmt.Errorf("%s hook: %w", event, err)
+	}
+	if cmd == nil {
+		return nil // no hook configured for this event; the common case
+	}
+	if note != "" {
+		fmt.Fprintf(diag, "backlog: %s hook: %s\n", event, note)
+	}
+	if err := execute(cmd, diag, root, project, event, t, extra); err != nil {
+		return fmt.Errorf("%s hook declined this change: %w", event, err)
+	}
+	return nil
+}
+
+// execute wires up and runs cmd against t: environment, working directory,
+// and the task's JSON on stdin. Both Run and RunPre share it; only what they
+// do with a non-nil return differs.
+func execute(cmd *exec.Cmd, diag io.Writer, root, project, event string, t *task.Task, extra map[string]string) error {
 	cmd.Dir = project
 	cmd.Env = append(os.Environ(), envFor(root, project, event, t, extra)...)
 	cmd.Stdout = diag
@@ -71,10 +126,7 @@ func Run(diag io.Writer, root, project, event string, t *task.Task, extra map[st
 			cmd.Stdin = bytes.NewReader(data)
 		}
 	}
-
-	if err := cmd.Run(); err != nil {
-		fmt.Fprintf(diag, "backlog: %s hook failed: %v\n", event, err)
-	}
+	return cmd.Run()
 }
 
 // envFor builds the environment variables passed to every hook. The task's

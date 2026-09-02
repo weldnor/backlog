@@ -888,3 +888,57 @@ func TestHooksFireOnLifecycleEvents(t *testing.T) {
 		t.Errorf("stderr did not report the failing hook: %s", res.stderr)
 	}
 }
+
+// TestPreHooksCanBlockOrAllow drives the real binary against pre-add and
+// pre-rm hooks: one that declines (task must not exist afterward, command
+// must fail) and one that allows (command proceeds normally).
+func TestPreHooksCanBlockOrAllow(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("this test's hook scripts are shell; internal/hooks covers Windows shapes directly")
+	}
+	dir := t.TempDir()
+	mustBacklog(t, dir, "init")
+	hooksDir := filepath.Join(dir, ".backlog", "hooks")
+
+	// A pre-add hook that refuses anything tagged "spam".
+	preAdd := "#!/bin/sh\n" +
+		"case \",$BACKLOG_TASK_TAGS,\" in\n" +
+		"  *,spam,*) echo 'declining: spam is not a finding' >&2; exit 1 ;;\n" +
+		"esac\n" +
+		"exit 0\n"
+	if err := os.WriteFile(filepath.Join(hooksDir, "pre-add"), []byte(preAdd), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	// The tagged one is blocked before it ever reaches disk.
+	blocked := backlog(t, dir, "add", "Buy cheap watches", "--tag", "spam")
+	if blocked.code == 0 {
+		t.Fatalf("expected add to fail when pre-add declines, got exit 0: %s", blocked.stdout)
+	}
+	if !strings.Contains(blocked.stderr, "declining: spam is not a finding") {
+		t.Errorf("stderr did not carry the hook's reason: %s", blocked.stderr)
+	}
+	if entries, _ := os.ReadDir(filepath.Join(dir, ".backlog", "tasks")); len(entries) != 0 {
+		t.Errorf("a task file was written despite the pre-add hook declining: %v", entries)
+	}
+
+	// An untagged one is let through by the same hook.
+	mustBacklog(t, dir, "add", "A real finding")
+	list := mustBacklog(t, dir, "list", "--json")
+	if !strings.Contains(list, "A real finding") {
+		t.Fatalf("the allowed task did not get created: %s", list)
+	}
+
+	// A pre-rm hook that refuses to delete anything - the task must still be
+	// there afterward, not just the command reporting failure.
+	if err := os.WriteFile(filepath.Join(hooksDir, "pre-rm"), []byte("#!/bin/sh\nexit 1\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	rm := backlog(t, dir, "rm", "1")
+	if rm.code == 0 {
+		t.Fatal("expected rm to fail when pre-rm declines, got exit 0")
+	}
+	if _, err := os.Stat(filepath.Join(dir, ".backlog", "tasks", "001-a-real-finding.md")); err != nil {
+		t.Errorf("pre-rm declined but the task file is gone: %v", err)
+	}
+}

@@ -342,7 +342,7 @@ two agents on parallel branches do not conflict on the same lines.
 ```
 .backlog/
   tasks/      # every task, in every status
-  hooks/      # scripts run after add/set/edit/rm — see Hooks below
+  hooks/      # scripts run around add/set/edit/rm — see Hooks below
 ```
 
 Files are named `<id>-<slug>.md`, where the identifier is the lowest unused
@@ -419,57 +419,88 @@ of that lives in the triage skill.
 
 ## Hooks
 
-A hook is a script that runs after a task changes, the way a git hook runs
-after a commit. It is how a Slack notification, a sync into an external
-tracker, or any other reaction to the backlog is wired up, without the
-`backlog` binary knowing that system exists — it just runs whatever is in
-`.backlog/hooks/` and moves on.
+A hook is a script that runs when a task changes, the way a git hook runs
+around a commit. It is how a Slack notification, a sync into an external
+tracker, a policy check, or any other reaction to the backlog is wired up,
+without the `backlog` binary knowing that system exists — it just runs
+whatever is in `.backlog/hooks/` and moves on.
 
 `backlog init` creates `.backlog/hooks/` (with a `README` explaining the
 mechanism) but installs no hooks; a fresh backlog behaves exactly as before
 until a script is added.
 
-Four events fire, one per mutating command:
+There are two kinds, one pair per mutating command:
 
-| Event | Fires after |
-| --- | --- |
-| `post-add` | `backlog add` creates a task |
-| `post-set` | `backlog set` changes status, priority, reason or refs |
-| `post-edit` | `backlog edit` or `backlog tag` changes title, description or tags |
-| `post-rm` | `backlog rm` deletes a task |
+| Event | Runs | Can it stop the change? |
+| --- | --- | --- |
+| `pre-add` / `post-add` | before / after `backlog add` creates a task | pre- can |
+| `pre-set` / `post-set` | before / after `backlog set` changes status, priority, reason or refs | pre- can |
+| `pre-edit` / `post-edit` | before / after `backlog edit` or `backlog tag` changes title, description or tags | pre- can |
+| `pre-rm` / `post-rm` | before / after `backlog rm` deletes a task | pre- can |
+
+A **post-** hook is a side effect, not a gate: it observes a change that
+already happened. A hook that fails — a non-zero exit, or one that could not
+be run at all — is reported to standard error, but the `backlog` command that
+triggered it still succeeds; the write already happened.
+
+A **pre-** hook is a gate: it runs before anything is written, and a non-zero
+exit stops the command with nothing changed — the task is not created,
+edited or deleted, and the reason the hook printed is what the caller sees.
+Unlike a post- hook, a pre- hook that exists but *could not be run at all*
+(missing interpreter, a script left non-executable) also blocks, rather than
+being skipped: a gate that quietly lets everything through when it fails to
+start would be worse than no gate at all. There is no way to fix a change
+from a pre- hook, only to allow or refuse it.
 
 To install one, add a file to `.backlog/hooks/` named for the event — for
-example `.backlog/hooks/post-add`. The task is passed to it two ways: as JSON
-on stdin (the same shape `--json` prints), and as environment variables for a
-one-liner that does not want to parse JSON:
+example `.backlog/hooks/pre-add` or `.backlog/hooks/post-add`. The task is
+passed to it two ways: as JSON on stdin (the same shape `--json` prints), and
+as environment variables for a one-liner that does not want to parse JSON:
 
 ```
-BACKLOG_EVENT             the event name, e.g. post-add
-BACKLOG_ROOT               absolute path of .backlog
-BACKLOG_PROJECT            absolute path of the project
+BACKLOG_EVENT              the event name, e.g. pre-add
+BACKLOG_ROOT                absolute path of .backlog
+BACKLOG_PROJECT             absolute path of the project
 BACKLOG_TASK_ID
 BACKLOG_TASK_TITLE
 BACKLOG_TASK_STATUS
 BACKLOG_TASK_PRIORITY
-BACKLOG_TASK_TAGS          comma-joined
-BACKLOG_TASK_FILE          the task's file path
+BACKLOG_TASK_TAGS           comma-joined
+BACKLOG_TASK_FILE           the task's file path
 ```
 
-`post-set` additionally carries `BACKLOG_PREVIOUS_STATUS` and
-`BACKLOG_PREVIOUS_PRIORITY`, so a hook can tell what changed rather than just
-what a task now is.
+For `pre-add`, `BACKLOG_TASK_ID` and `BACKLOG_TASK_FILE` are empty: `add`
+claims the identifier and writes the file in the same atomic step, so neither
+exists yet when the hook that could still refuse it runs.
 
-A hook is a side effect, not a gate: it can observe a change but never block
-or undo one. A hook that fails — a non-zero exit, or one that could not be
-run at all — is reported to standard error, but the `backlog` command that
-triggered it still succeeds; the write already happened. This also means
-there is no `pre-` hook to cancel an operation.
+`post-set` and `pre-set` additionally carry `BACKLOG_PREVIOUS_STATUS` /
+`BACKLOG_PREVIOUS_PRIORITY` and `BACKLOG_NEW_STATUS` / `BACKLOG_NEW_PRIORITY`
+/ `BACKLOG_NEW_REASON` / `BACKLOG_NEW_REFS` respectively — `pre-set` sees the
+task as it currently is (`BACKLOG_TASK_STATUS`, ...) alongside what is being
+proposed (`BACKLOG_NEW_STATUS`, ...), so it can decide from both. `pre-edit`
+carries `BACKLOG_NEW_TITLE` / `BACKLOG_NEW_DESCRIPTION` / `BACKLOG_NEW_TAGS`
+the same way, current state in `BACKLOG_TASK_*`, the proposed one in
+`BACKLOG_NEW_*`.
+
+A pre-hook that refuses a change, for example, might reject deleting anything
+still referenced elsewhere, or reject a status change that skips a status
+(`new` straight to `done`), or reject a tag your team has retired:
+
+```sh
+#!/bin/sh
+# .backlog/hooks/pre-set
+if [ "$BACKLOG_NEW_STATUS" = "done" ] && [ "$BACKLOG_TASK_STATUS" = "new" ]; then
+  echo "a task must go through todo or doing before done" >&2
+  exit 1
+fi
+```
 
 ### Working on both Linux and Windows
 
 Rather than one script format, backlog looks for several shapes of the same
 event name and runs the first one it finds, so a project can ship whichever
-shape fits how it is developed:
+shape fits how it is developed. This applies the same way to every event name,
+`pre-` and `post-` alike — the examples below use `post-add`:
 
 | File | Runs via |
 | --- | --- |
