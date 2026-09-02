@@ -57,7 +57,7 @@ func writeTaskLines(w io.Writer, tasks []*task.Task) {
 			unknown = append(unknown, t)
 		}
 	}
-	order := []string{task.StatusTodo, task.StatusDoing, task.StatusDone, task.StatusDeclined}
+	order := []string{task.StatusNew, task.StatusTodo, task.StatusDoing, task.StatusDone, task.StatusDeclined}
 	first := true
 	for _, status := range order {
 		group := byStatus[status]

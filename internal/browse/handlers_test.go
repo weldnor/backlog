@@ -39,7 +39,7 @@ func addTask(t *testing.T, st *store.Store, title, status, priority string, tags
 	if err := st.Create(tk); err != nil {
 		t.Fatalf("Create(%q): %v", title, err)
 	}
-	if status != task.StatusTodo {
+	if status != task.StatusNew {
 		tk.Status = status
 		if status == task.StatusDeclined {
 			tk.Reason = "because"
@@ -177,8 +177,8 @@ func TestCreateTaskMinimal(t *testing.T) {
 		t.Fatalf("status = %d, body %s", w.Code, w.Body.String())
 	}
 	got := decodeBody[taskview.TaskView](t, w)
-	if got.Status != task.StatusTodo || got.Priority != task.DefaultPriority || got.Metadata.Author != task.AuthorHuman {
-		t.Errorf("created task = %+v, want status todo, priority %s, author %s", got, task.DefaultPriority, task.AuthorHuman)
+	if got.Status != task.StatusNew || got.Priority != task.DefaultPriority || got.Metadata.Author != task.AuthorHuman {
+		t.Errorf("created task = %+v, want status new, priority %s, author %s", got, task.DefaultPriority, task.AuthorHuman)
 	}
 
 	onDisk, err := st.Find(got.ID)

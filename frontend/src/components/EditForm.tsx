@@ -19,7 +19,7 @@ function draftFor(task?: TaskView): Draft {
   if (!task) {
     return {
       title: "",
-      status: "todo",
+      status: "new",
       priority: "medium",
       tags: "",
       body: "",

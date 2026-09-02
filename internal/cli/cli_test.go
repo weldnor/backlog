@@ -158,8 +158,8 @@ func TestAddMinimalCapture(t *testing.T) {
 
 	var got TaskView
 	decode(t, h.mustRun("show", "1", "--json"), &got)
-	if got.Status != "todo" {
-		t.Errorf("Status = %q, want todo", got.Status)
+	if got.Status != "new" {
+		t.Errorf("Status = %q, want new", got.Status)
 	}
 	if len(got.Tags) != 0 {
 		t.Errorf("Tags = %v, want none", got.Tags)
@@ -253,6 +253,7 @@ func TestList(t *testing.T) {
 	h.mustRun("add", "First finding", "--tag", "bug")
 	h.mustRun("add", "Second finding", "--tag", "flake")
 	h.mustRun("add", "Third finding", "--tag", "bug")
+	h.mustRun("set", "1", "todo")
 	h.mustRun("set", "2", "doing")
 	h.mustRun("set", "3", "done")
 
@@ -341,7 +342,7 @@ func TestShow(t *testing.T) {
 
 	t.Run("an active task", func(t *testing.T) {
 		stdout := h.mustRun("show", "1")
-		for _, want := range []string{"An active task", "todo", "the body"} {
+		for _, want := range []string{"An active task", "new", "the body"} {
 			if !strings.Contains(stdout, want) {
 				t.Errorf("output does not contain %q:\n%s", want, stdout)
 			}

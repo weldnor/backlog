@@ -265,7 +265,7 @@ func TestFreshBacklogValidatesCleanAndCorruptionIsCaught(t *testing.T) {
 
 		want := []string{
 			"not valid YAML",             // 003, unreadable
-			"expected one of todo",       // 004, unknown status
+			"expected one of new",        // 004, unknown status
 			"did you mean created?",      // 004, misspelled tool-owned key
 			"used by more than one task", // 001, duplicate identifier
 			"not a task file",            // scratch.txt
@@ -395,7 +395,7 @@ func TestPriorityThroughTheLifecycle(t *testing.T) {
 
 	// It is on disk as an author-owned field, next to the status.
 	onDisk := read(t, filepath.Join(dir, ".backlog", "tasks", "002-data-loss-on-retry.md"))
-	if !strings.Contains(onDisk, "\nstatus: todo\npriority: high\n") {
+	if !strings.Contains(onDisk, "\nstatus: new\npriority: high\n") {
 		t.Errorf("the file does not declare the priority after the status:\n%s", onDisk)
 	}
 
@@ -432,8 +432,8 @@ func TestPriorityThroughTheLifecycle(t *testing.T) {
 	// A revision that changes only the severity leaves the status alone.
 	var revised taskJSON
 	unmarshal(t, mustBacklog(t, dir, "set", "1", "--priority", "high", "--json"), &revised)
-	if revised.Priority != "high" || revised.Status != "todo" {
-		t.Errorf("set --priority gave %+v, want a high todo", revised)
+	if revised.Priority != "high" || revised.Status != "new" {
+		t.Errorf("set --priority gave %+v, want a high new task", revised)
 	}
 	if _, err := os.Stat(filepath.Join(dir, ".backlog", "tasks", "001-unjudged-finding.md")); err != nil {
 		t.Errorf("changing only the priority moved the file: %v", err)

@@ -18,9 +18,15 @@ import (
 // to give a future format migration a foothold.
 const SchemaVersion = 1
 
-// The four permitted statuses. StatusDone and StatusDeclined are terminal;
-// the other two are not.
+// The five permitted statuses. StatusDone and StatusDeclined are terminal;
+// the other three are not.
 const (
+	// StatusNew is where every task lands the moment it is captured. It is
+	// unreviewed: nobody has yet judged whether the finding is worth doing at
+	// all. A task leaves it by being looked at — moved to StatusTodo once a
+	// person decides it is worth doing, or straight to StatusDeclined or
+	// StatusDone without ever passing through StatusTodo.
+	StatusNew   = "new"
 	StatusTodo  = "todo"
 	StatusDoing = "doing"
 	StatusDone  = "done"
@@ -32,7 +38,7 @@ const (
 )
 
 // Statuses lists the permitted status values in lifecycle order.
-var Statuses = []string{StatusTodo, StatusDoing, StatusDone, StatusDeclined}
+var Statuses = []string{StatusNew, StatusTodo, StatusDoing, StatusDone, StatusDeclined}
 
 // ValidStatus reports whether s is one of the permitted status values.
 func ValidStatus(s string) bool {

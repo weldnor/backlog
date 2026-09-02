@@ -54,7 +54,7 @@ func TestSetDeclineRules(t *testing.T) {
 		// The task is untouched, so nothing was half applied.
 		var got TaskView
 		decode(t, h.mustRun("show", "1", "--json"), &got)
-		if got.Status != task.StatusTodo {
+		if got.Status != task.StatusNew {
 			t.Errorf("Status = %q, want the task unchanged", got.Status)
 		}
 	})
@@ -73,7 +73,7 @@ func TestSetDeclineRules(t *testing.T) {
 		}
 		var got TaskView
 		decode(t, h.mustRun("show", "1", "--json"), &got)
-		if got.Status != task.StatusTodo || got.Reason != "" {
+		if got.Status != task.StatusNew || got.Reason != "" {
 			t.Errorf("the task was modified: %+v", got)
 		}
 	})
@@ -250,6 +250,7 @@ func TestListGroupsDeclinedLast(t *testing.T) {
 	h.mustRun("add", "A finished finding")
 	h.mustRun("add", "A finding in flight")
 	h.mustRun("set", "1", "declined", "--reason", "not worth the churn")
+	h.mustRun("set", "2", "todo")
 	h.mustRun("set", "3", "done")
 	h.mustRun("set", "4", "doing")
 

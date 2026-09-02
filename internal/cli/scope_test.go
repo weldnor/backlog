@@ -15,7 +15,7 @@ func TestScopeSelectedStatuses(t *testing.T) {
 		{
 			name: "no subcommand covers every status",
 			sc:   scope{},
-			want: []string{task.StatusTodo, task.StatusDoing, task.StatusDone, task.StatusDeclined},
+			want: []string{task.StatusNew, task.StatusTodo, task.StatusDoing, task.StatusDone, task.StatusDeclined},
 		},
 		{
 			name: "a status subcommand narrows to that one status",

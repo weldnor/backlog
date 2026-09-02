@@ -56,7 +56,7 @@ func TestSearchHumanOutputShowsMatchedTextInContext(t *testing.T) {
 	h := searchFixture(t)
 	stdout := h.mustRun("search", "cache")
 
-	if !strings.Contains(stdout, "001") || !strings.Contains(stdout, "todo") {
+	if !strings.Contains(stdout, "001") || !strings.Contains(stdout, "new") {
 		t.Errorf("a result is missing its identifier or status:\n%s", stdout)
 	}
 	if !strings.Contains(stdout, "Race in session Cache") {

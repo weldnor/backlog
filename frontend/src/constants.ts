@@ -1,7 +1,7 @@
 import type { TaskView } from "./api";
 
 // Fixed lifecycle order, matching internal/task and the old app.js.
-export const STATUS_ORDER = ["todo", "doing", "done", "declined"] as const;
+export const STATUS_ORDER = ["new", "todo", "doing", "done", "declined"] as const;
 export const PRI_ORDER = ["high", "medium", "low"] as const;
 
 export interface StatusMeta {
@@ -10,6 +10,7 @@ export interface StatusMeta {
 }
 
 export const STATUS_META: Record<string, StatusMeta> = {
+  new: { headLabel: "NEW", fg: "status-new" },
   todo: { headLabel: "TODO", fg: "status-todo" },
   doing: { headLabel: "DOING", fg: "status-doing" },
   done: { headLabel: "DONE", fg: "status-done" },
@@ -19,7 +20,8 @@ export const STATUS_META: Record<string, StatusMeta> = {
 // The board's own empty-column copy, kept verbatim from the old UI: it teaches
 // the same distinctions the README does.
 export const BOARD_EMPTY_NOTE: Record<string, string> = {
-  todo: "Nothing captured here yet.",
+  new: "Nothing captured here yet, unreviewed.",
+  todo: "Nothing approved and waiting.",
   doing: "Nothing in flight.",
   done: "Archive — acted on and moved out of the working set.",
   declined:

@@ -87,15 +87,23 @@ backlog add "HTTP 500 on login" \
 The current git branch and commit are recorded automatically, and are simply
 left out when the project is not a git repository.
 
+Every task is recorded as `new`, whoever captures it. That status means
+unreviewed — nobody has yet decided whether the finding is worth doing at
+all. It is not a claim about priority or urgency; a `high`-priority task is
+just as `new` as a `low`-priority one until someone looks at it. Moving a task
+out of `new` is a deliberate decision, not something `add` does for you: see
+`backlog set` below.
+
 ### `backlog list`
 
-Shows tasks in every status, grouped in the order `todo`, `doing`, `done`,
-`declined`. Four subcommands narrow the listing to a single status; there is no
-flag for selecting status.
+Shows tasks in every status, grouped in the order `new`, `todo`, `doing`,
+`done`, `declined`. Five subcommands narrow the listing to a single status;
+there is no flag for selecting status.
 
 ```
 backlog list                     # every status
-backlog list todo                # only this status
+backlog list new                 # only this status: unreviewed
+backlog list todo
 backlog list doing
 backlog list done
 backlog list declined
@@ -154,6 +162,7 @@ combination; at least one is required. A status change never moves the task
 file: every task lives in `.backlog/tasks/` regardless of status.
 
 ```
+backlog set 1 todo             # approved: worth doing
 backlog set 1 doing
 backlog set 1 done --ref "change:fix-session-cache"
 backlog set 1 declined --reason "the call site is single-threaded"
@@ -162,6 +171,13 @@ backlog set 1 --ref "issue:1423"
 backlog set 1 --priority high
 backlog set 1 doing --priority low
 ```
+
+A task created by `backlog add` starts at `new`. `set` is how it moves on:
+into `todo` once someone decides it is worth doing, straight to `declined` if
+it is not, or straight to `done` if it turns out to already be fixed. There is
+nothing special about the transition — `new` is a status like any other, and
+`set` accepts it as a destination too, the way reopening a declined task
+already does for `todo`.
 
 Changing only the priority leaves the status alone. This is how triage revises
 a severity that was judged in a hurry.
@@ -225,9 +241,9 @@ distinction is guidance, and `rm` deletes whatever identifier it is given.
 ### `backlog stats`
 
 Summarizes the backlog: totals by status and by priority, a count per tag, and
-the average age of tasks still `todo` or `doing`. This is the shape-of-the-backlog
-question a triage starts with, otherwise answered by piping `list --json`
-through a script.
+the average age of tasks still `new`, `todo` or `doing`. This is the
+shape-of-the-backlog question a triage starts with, otherwise answered by
+piping `list --json` through a script.
 
 ```
 backlog stats
@@ -336,7 +352,7 @@ reduction of the title with non-ASCII letters kept as they are.
 ---
 id: 1
 title: Session cache is not safe for concurrent readers
-status: todo
+status: new
 priority: medium
 tags:
   - bug
@@ -372,9 +388,12 @@ field existed keeps working — and `validate` reports it as a repairable warnin
 until `validate --fix`, or any other write to that file, adds the line. A value
 outside the three is kept as written and reported as an error.
 
-`status` is one of `todo`, `doing`, `done` or `declined`. The last two are
-terminal — the task is finished, either acted on or deliberately not. Status is
-the only record of where a task stands; its file never moves.
+`status` is one of `new`, `todo`, `doing`, `done` or `declined`. `new` is where
+every task lands at capture, before anyone has decided whether it is worth
+doing at all; `backlog add` always writes it, regardless of who or what ran
+the command. `done` and `declined` are terminal — the task is finished, either
+acted on or deliberately not. Status is the only record of where a task
+stands; its file never moves.
 
 `reason` is the prose explaining a decline, and is present **exactly when** the
 status is `declined`: a declined task without one is an error, and so is a
@@ -390,7 +409,7 @@ There is no `updated` field. It would add noise to every diff and, since only
 the CLI would maintain it, hand-edits would silently make it lie. Git already
 records modification time.
 
-There is no configuration file. The layout, the four statuses and the
+There is no configuration file. The layout, the five statuses and the
 identifier scheme are fixed.
 
 Entries in `metadata.refs` are stored verbatim and never resolved. The binary
@@ -418,18 +437,22 @@ deletes that one on the spot rather than leaving it for a triage that may not
 come soon, but only for those two unambiguous cases — anything else stays for
 `backlog-triage` to judge.
 
-**`backlog-sort`** — a narrow, mechanical pass over `todo` and `doing` tasks: for
-each one, has anything touched its recorded files since the commit it was
-captured on, and if so, does the finding still hold? It only ever closes a task
-the branch has demonstrably already fixed; it never declines, reprioritises, or
-promotes. That restriction is what makes it safe to run often without a human
-standing over it, clearing the obvious cases so a fuller triage isn't needed
-just to see what's still open.
+**`backlog-sort`** — a narrow, mechanical pass over `new`, `todo` and `doing`
+tasks: for each one, has anything touched its recorded files since the commit
+it was captured on, and if so, does the finding still hold? It only ever
+closes a task the branch has demonstrably already fixed; it never declines,
+reprioritises, or promotes. That restriction is what makes it safe to run
+often without a human standing over it, clearing the obvious cases so a fuller
+triage isn't needed just to see what's still open.
 
 **`backlog-triage`** — the cold path. It fires when someone asks for the backlog
-to be reviewed. It reads the accumulated tasks, checks whether each still holds
-against the current code, and gives every one a disposition: promote, fix now,
-keep, or decline with a reason that stays on the task. It works out at run time which planning system the project uses,
+to be reviewed. Every task starts `new` — captured, but not yet judged worth
+doing at all — and triage's first job is working that queue down: approve a
+task into `todo` once it is worth doing, or dispose of it some other way
+without ever routing it through `todo`. It reads the accumulated tasks, checks
+whether each still holds against the current code, and gives every one a
+disposition: approve, promote, fix now, or decline with a reason that stays on
+the task. It works out at run time which planning system the project uses,
 and records the resulting link as a free-form reference.
 
 The skills are stamped with the version of the binary that wrote them.
