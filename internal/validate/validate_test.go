@@ -192,7 +192,7 @@ func TestPerFileChecks(t *testing.T) {
 			file:     "001-x.md",
 			content:  "---\nid: 1\ntitle: x\nstatus: blocked\ntags: []\n---\n",
 			severity: "error",
-			message:  "expected one of todo, doing, done",
+			message:  "expected one of new, todo, doing, done",
 		},
 		{
 			name:     "tags is not a list",

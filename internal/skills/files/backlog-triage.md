@@ -12,6 +12,16 @@ turns them into decisions.
 Unlike capture, this is allowed to take time. Read the code. Check whether the
 finding still holds. Give the user a real recommendation.
 
+## Every task starts unreviewed
+
+`backlog add` always records a task as `new`, whoever captured it. That status
+means exactly one thing: nobody has yet decided whether this is worth doing at
+all. It is not a queue of work — it is a queue of decisions. A `new` task
+never gets picked up or promoted while it is still `new`; it first has to be
+looked at and either approved into `todo` or dispositioned some other way,
+below. Reviewing the `new` queue down to nothing is triage's first job, before
+anything already in `todo` or `doing` gets a second look.
+
 ## Read what is there
 
 ```
@@ -77,19 +87,33 @@ first one able to judge severity properly.
 
 ## Decide, one task at a time
 
-Every task leaves triage with exactly one of four dispositions. They are four
-different situations, not four degrees of the same one:
+Every task leaves triage with exactly one of five dispositions. They are five
+different situations, not five degrees of the same one:
 
-- **Promote** — it is real, it still holds, and it is worth planned work. Turn
-  it into a work item in whatever system this project uses (below).
+- **Approve** — the task is `new`, it is real, it still holds, and it is worth
+  doing at some point, just not necessarily right now. This is the disposition
+  that answers the question `new` exists to ask. Move it into the working set:
+
+  ```
+  backlog set <id> todo
+  ```
+
+  Sharpen the title or description first if the finding is clearer to you now
+  than it was to whoever wrote it. A task already in `todo` needs no further
+  approving — it has already had this look — but is still open to any of the
+  other dispositions below on a later pass.
+- **Promote** — it is approved, and it is worth planned work rather than
+  sitting in `todo` until someone gets to it. Turn it into a work item in
+  whatever system this project uses (below).
 - **Fix now** — it is real and small enough that fixing it costs less than
   tracking it. Do it, then set the task to `done` with a reference to the
-  commit or change.
-- **Keep** — real, but not worth doing yet. Leave it in `todo`. Sharpen the
-  title or description if the finding is clearer to you now than it was to
-  whoever wrote it.
-- **Decline** — real but not worth doing, or no longer true. Record the
-  decision rather than deleting it:
+  commit or change. This applies equally to a task still `new` — approving it
+  into `todo` first, only to immediately close it, adds a step with no
+  reader who benefits from it.
+- **Decline** — real but not worth doing, or no longer true. This is also how
+  a `new` task is dispositioned as "not worth doing at all" — decline it
+  directly, with no detour through `todo`. Record the decision rather than
+  deleting it:
 
   ```
   backlog set <id> declined --reason "<why this is not being done>"

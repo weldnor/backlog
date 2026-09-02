@@ -101,8 +101,8 @@ not come soon:
 
 Do this only for the unambiguous cases above. Anything short of "my change
 plainly fixed it" or "this is the same finding, word for word" is a judgement
-call for `backlog-triage`, not something to decide in passing — leave it in
-`todo` and move on.
+call for `backlog-triage`, not something to decide in passing — leave it as
+it is and move on.
 
 ## Recording it
 

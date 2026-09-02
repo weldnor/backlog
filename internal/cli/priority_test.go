@@ -90,7 +90,7 @@ func TestSetPriority(t *testing.T) {
 		if got.Priority != task.PriorityHigh {
 			t.Errorf("Priority = %q, want high", got.Priority)
 		}
-		if got.Status != task.StatusTodo {
+		if got.Status != task.StatusNew {
 			t.Errorf("Status = %q, want it unchanged", got.Status)
 		}
 		// Status is what decides the directory, so the file must not move.
@@ -164,6 +164,9 @@ func TestListGroupsByStatusAndKeepsPriorityOrder(t *testing.T) {
 	h.initBacklog()
 	seed(t, h)
 	h.mustRun("set", "1", "doing")
+	h.mustRun("set", "2", "todo")
+	h.mustRun("set", "3", "todo")
+	h.mustRun("set", "4", "todo")
 
 	stdout := h.mustRun("list")
 	todo, doing := strings.Index(stdout, "todo ("), strings.Index(stdout, "doing (")

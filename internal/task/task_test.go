@@ -3,7 +3,7 @@ package task
 import "testing"
 
 func TestValidStatus(t *testing.T) {
-	for _, s := range []string{StatusTodo, StatusDoing, StatusDone, StatusDeclined} {
+	for _, s := range []string{StatusNew, StatusTodo, StatusDoing, StatusDone, StatusDeclined} {
 		if !ValidStatus(s) {
 			t.Errorf("ValidStatus(%q) = false, want true", s)
 		}
@@ -23,7 +23,7 @@ func TestIsTerminal(t *testing.T) {
 			t.Errorf("IsTerminal(%q) = false, want true", s)
 		}
 	}
-	for _, s := range []string{StatusTodo, StatusDoing, "", "wontfix"} {
+	for _, s := range []string{StatusNew, StatusTodo, StatusDoing, "", "wontfix"} {
 		if IsTerminal(s) {
 			t.Errorf("IsTerminal(%q) = true, want false", s)
 		}

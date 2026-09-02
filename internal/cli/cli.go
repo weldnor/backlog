@@ -55,7 +55,7 @@ func commands() []command {
 	return []command{
 		{"init", "create a backlog in the current directory and install the agent skills", runInit},
 		{"add", "record a new task", runAdd},
-		{"list", "list tasks (add todo|doing|done|declined to show one status)", runList},
+		{"list", "list tasks (add new|todo|doing|done|declined to show one status)", runList},
 		{"search", "find tasks by title, description or tag", runSearch},
 		{"show", "show a single task", runShow},
 		{"set", "change a task's status or attach a reference", runSet},

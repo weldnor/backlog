@@ -277,9 +277,10 @@ func applyPatch(t *task.Task, req patchRequest) error {
 
 // selectTasks reads a backlog and returns the tasks matching q's status, tag
 // and priority filters, using the same selection rules `backlog list --all`
-// applies: an explicit ?status is taken at face value; otherwise todo and
-// doing are in scope, with done and declined added by ?all=1. Multiple ?tag
-// values must all match; multiple ?priority values match if any do.
+// applies: an explicit ?status is taken at face value; otherwise new, todo
+// and doing — the non-terminal statuses — are in scope, with done and
+// declined added by ?all=1. Multiple ?tag values must all match; multiple
+// ?priority values match if any do.
 func selectTasks(st *store.Store, q url.Values) ([]*task.Task, error) {
 	statuses, err := selectedStatuses(q)
 	if err != nil {
@@ -323,6 +324,7 @@ func selectedStatuses(q url.Values) (map[string]bool, error) {
 		}
 		return out, nil
 	}
+	out[task.StatusNew] = true
 	out[task.StatusTodo] = true
 	out[task.StatusDoing] = true
 	if isTrue(q.Get("all")) {

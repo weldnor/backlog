@@ -21,7 +21,7 @@ func New(title, body string, tags, files, refs []string, author, priority string
 	src.Files = files
 	return &Task{
 		Title:    strings.TrimSpace(title),
-		Status:   StatusTodo,
+		Status:   StatusNew,
 		Priority: priority,
 		Tags:     NormalizeTags(tags),
 		Body:     normalizeBody(body),

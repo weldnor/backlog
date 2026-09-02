@@ -275,6 +275,7 @@ textarea.input { min-height: 90px; resize: vertical; font-family: var(--font-mon
 .pri-high { color: var(--color-accent-700); }
 .pri-medium { color: var(--color-accent-2-700, var(--color-accent-700)); }
 .pri-low { color: var(--color-neutral-600); }
+.status-new { color: var(--color-neutral-600); }
 .status-todo { color: var(--color-neutral-800); }
 .status-doing { color: var(--color-accent-700); }
 .status-done { color: var(--color-neutral-600); }

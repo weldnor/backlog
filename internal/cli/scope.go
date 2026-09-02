@@ -50,7 +50,7 @@ func (s *scope) selectedPriorities() (map[string]bool, error) {
 }
 
 // selected returns the statuses in scope: the one a list subcommand narrowed
-// to, or all four.
+// to, or all five.
 func (s *scope) selected() map[string]bool {
 	out := map[string]bool{}
 	if s.status != "" {

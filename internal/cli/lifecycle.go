@@ -72,15 +72,15 @@ func runList(env Env, args []string) error {
 
 	for _, a := range args {
 		if a == "-h" || a == "--help" {
-			return usagef("usage: backlog list [todo|doing|done|declined] [options]\n"+
+			return usagef("usage: backlog list [new|todo|doing|done|declined] [options]\n"+
 				"\n"+
 				"With no subcommand, lists tasks in every status. A status subcommand\n"+
-				"(todo, doing, done, declined) narrows the listing to that one status.\n"+
+				"(new, todo, doing, done, declined) narrows the listing to that one status.\n"+
 				"\n%s", usageText(fs))
 		}
 	}
 
-	// A leading bare word selects one status: `backlog list done`. The four
+	// A leading bare word selects one status: `backlog list done`. The five
 	// names are a closed set, so a subcommand reads better than a flag and a
 	// bare `backlog list` already covers "every status".
 	if len(args) > 0 && !strings.HasPrefix(args[0], "-") {

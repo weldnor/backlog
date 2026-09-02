@@ -17,6 +17,7 @@ run often and without a human standing over it.
 ## What to look at
 
 ```
+backlog list new --json
 backlog list todo --json
 backlog list doing --json
 ```

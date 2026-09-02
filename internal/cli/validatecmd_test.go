@@ -28,7 +28,7 @@ func TestValidateExitStatus(t *testing.T) {
 		h.initBacklog()
 		h.mustRun("add", "A finding")
 		editTask(t, h, "001-a-finding.md", func(s string) string {
-			return strings.Replace(s, "status: todo", "status: todo\nowner: someone", 1)
+			return strings.Replace(s, "status: new", "status: new\nowner: someone", 1)
 		})
 
 		code, stdout, _ := h.run("validate")
@@ -45,7 +45,7 @@ func TestValidateExitStatus(t *testing.T) {
 		h.initBacklog()
 		h.mustRun("add", "A finding")
 		editTask(t, h, "001-a-finding.md", func(s string) string {
-			return strings.Replace(s, "status: todo", "status: todo\nowner: someone", 1)
+			return strings.Replace(s, "status: new", "status: new\nowner: someone", 1)
 		})
 
 		if code, _, _ := h.run("validate", "--strict"); code == 0 {

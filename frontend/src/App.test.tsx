@@ -87,7 +87,9 @@ function fakeFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Respon
     const u = new URL("http://x" + url);
     let out = tasksState;
     if (!u.searchParams.has("all")) {
-      out = tasksState.filter((t) => t.status === "todo" || t.status === "doing");
+      out = tasksState.filter(
+        (t) => t.status === "new" || t.status === "todo" || t.status === "doing",
+      );
     }
     const pri = u.searchParams.get("priority");
     if (pri) out = out.filter((t) => t.priority === pri);

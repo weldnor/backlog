@@ -18,7 +18,7 @@ func TestStatsCountsByStatusPriorityAndTag(t *testing.T) {
 	if got.Total != 4 {
 		t.Fatalf("Total = %d, want 4", got.Total)
 	}
-	if got.ByStatus["done"] != 1 || got.ByStatus["declined"] != 1 || got.ByStatus["todo"] != 2 {
+	if got.ByStatus["done"] != 1 || got.ByStatus["declined"] != 1 || got.ByStatus["new"] != 2 {
 		t.Errorf("ByStatus = %+v", got.ByStatus)
 	}
 	if got.ByPriority["high"] != 2 || got.ByPriority["medium"] != 1 || got.ByPriority["low"] != 1 {
