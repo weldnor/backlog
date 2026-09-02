@@ -817,3 +817,128 @@ func TestBrowseAPIMatchesCLI(t *testing.T) {
 		t.Errorf("validate exited %d after the browse-driven round trip: %s", got.code, got.stdout+got.stderr)
 	}
 }
+
+// TestHooksFireOnLifecycleEvents drives the real binary against a project
+// with a post-add and a post-set hook installed, and checks that each fires
+// with the environment and stdin the hook README promises. Hook scripts are
+// shell here because that is what a Unix CI runner has; the interpreter
+// selection itself (.ps1, .cmd, bare-with-shebang) is covered directly by
+// internal/hooks, which is where the cross-platform logic lives.
+func TestHooksFireOnLifecycleEvents(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("this test's hook scripts are shell; internal/hooks covers Windows shapes directly")
+	}
+	dir := t.TempDir()
+	mustBacklog(t, dir, "init")
+
+	hooksDir := filepath.Join(dir, ".backlog", "hooks")
+	addLog := filepath.Join(dir, "post-add.log")
+	setLog := filepath.Join(dir, "post-set.log")
+
+	writeHook := func(name, body string) {
+		if err := os.WriteFile(filepath.Join(hooksDir, name), []byte(body), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	writeHook("post-add", "#!/bin/sh\n"+
+		"printf '%s %s %s\\n' \"$BACKLOG_EVENT\" \"$BACKLOG_TASK_ID\" \"$BACKLOG_TASK_TITLE\" > \""+addLog+"\"\n"+
+		"cat > \""+addLog+".stdin\"\n")
+	writeHook("post-set", "#!/bin/sh\n"+
+		"printf '%s %s %s->%s\\n' \"$BACKLOG_EVENT\" \"$BACKLOG_TASK_ID\" \"$BACKLOG_PREVIOUS_STATUS\" \"$BACKLOG_TASK_STATUS\" > \""+setLog+"\"\n")
+
+	out := mustBacklog(t, dir, "add", "Something to fix")
+	if !strings.Contains(out, "created 001") {
+		t.Fatalf("add did not report success: %s", out)
+	}
+
+	got, err := os.ReadFile(addLog)
+	if err != nil {
+		t.Fatalf("post-add hook did not run: %v", err)
+	}
+	if want := "post-add 1 Something to fix\n"; string(got) != want {
+		t.Errorf("post-add saw %q, want %q", got, want)
+	}
+	stdin, err := os.ReadFile(addLog + ".stdin")
+	if err != nil {
+		t.Fatalf("post-add hook did not receive stdin: %v", err)
+	}
+	var fromHook taskJSON
+	unmarshal(t, string(stdin), &fromHook)
+	if fromHook.Title != "Something to fix" {
+		t.Errorf("stdin task title = %q", fromHook.Title)
+	}
+
+	mustBacklog(t, dir, "set", "1", "todo")
+	got, err = os.ReadFile(setLog)
+	if err != nil {
+		t.Fatalf("post-set hook did not run: %v", err)
+	}
+	if want := "post-set 1 new->todo\n"; string(got) != want {
+		t.Errorf("post-set saw %q, want %q", got, want)
+	}
+
+	// A hook is a side effect: a failing one is reported, but the command it
+	// rides on still succeeds.
+	writeHook("post-rm", "#!/bin/sh\nexit 7\n")
+	res := backlog(t, dir, "rm", "1")
+	if res.code != 0 {
+		t.Fatalf("rm failed because its hook failed: code=%d stderr=%s", res.code, res.stderr)
+	}
+	if !strings.Contains(res.stderr, "post-rm hook failed") {
+		t.Errorf("stderr did not report the failing hook: %s", res.stderr)
+	}
+}
+
+// TestPreHooksCanBlockOrAllow drives the real binary against pre-add and
+// pre-rm hooks: one that declines (task must not exist afterward, command
+// must fail) and one that allows (command proceeds normally).
+func TestPreHooksCanBlockOrAllow(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("this test's hook scripts are shell; internal/hooks covers Windows shapes directly")
+	}
+	dir := t.TempDir()
+	mustBacklog(t, dir, "init")
+	hooksDir := filepath.Join(dir, ".backlog", "hooks")
+
+	// A pre-add hook that refuses anything tagged "spam".
+	preAdd := "#!/bin/sh\n" +
+		"case \",$BACKLOG_TASK_TAGS,\" in\n" +
+		"  *,spam,*) echo 'declining: spam is not a finding' >&2; exit 1 ;;\n" +
+		"esac\n" +
+		"exit 0\n"
+	if err := os.WriteFile(filepath.Join(hooksDir, "pre-add"), []byte(preAdd), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	// The tagged one is blocked before it ever reaches disk.
+	blocked := backlog(t, dir, "add", "Buy cheap watches", "--tag", "spam")
+	if blocked.code == 0 {
+		t.Fatalf("expected add to fail when pre-add declines, got exit 0: %s", blocked.stdout)
+	}
+	if !strings.Contains(blocked.stderr, "declining: spam is not a finding") {
+		t.Errorf("stderr did not carry the hook's reason: %s", blocked.stderr)
+	}
+	if entries, _ := os.ReadDir(filepath.Join(dir, ".backlog", "tasks")); len(entries) != 0 {
+		t.Errorf("a task file was written despite the pre-add hook declining: %v", entries)
+	}
+
+	// An untagged one is let through by the same hook.
+	mustBacklog(t, dir, "add", "A real finding")
+	list := mustBacklog(t, dir, "list", "--json")
+	if !strings.Contains(list, "A real finding") {
+		t.Fatalf("the allowed task did not get created: %s", list)
+	}
+
+	// A pre-rm hook that refuses to delete anything - the task must still be
+	// there afterward, not just the command reporting failure.
+	if err := os.WriteFile(filepath.Join(hooksDir, "pre-rm"), []byte("#!/bin/sh\nexit 1\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	rm := backlog(t, dir, "rm", "1")
+	if rm.code == 0 {
+		t.Fatal("expected rm to fail when pre-rm declines, got exit 0")
+	}
+	if _, err := os.Stat(filepath.Join(dir, ".backlog", "tasks", "001-a-real-finding.md")); err != nil {
+		t.Errorf("pre-rm declined but the task file is gone: %v", err)
+	}
+}

@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/weldnor/backlog/internal/hooks"
 	"github.com/weldnor/backlog/internal/store"
 	"github.com/weldnor/backlog/internal/task"
 )
@@ -52,9 +53,15 @@ func runAdd(env Env, args []string) error {
 	}
 
 	t := task.New(text, *description, tags, files, refs, *author, *priority, store.Provenance(st.Project), time.Now())
+	// t has no id or file yet: those are claimed atomically as part of the
+	// write itself, so a pre-add hook necessarily runs before either exists.
+	if err := hooks.RunPre(env.Stderr, st.Root, st.Project, hooks.PreAdd, t, nil); err != nil {
+		return err
+	}
 	if err := st.Create(t); err != nil {
 		return err
 	}
+	hooks.Run(env.Stderr, st.Root, st.Project, hooks.PostAdd, t, nil)
 
 	if *asJSON {
 		return writeJSON(env.Stdout, view(t))
@@ -258,6 +265,18 @@ func runSet(env Env, args []string) error {
 		return usagef("task %d is %s, not %s; --reason applies only to a %s task",
 			t.ID, t.Status, task.StatusDeclined, task.StatusDeclined)
 	}
+	prevStatus, prevPriority := t.Status, t.Priority
+	// The pre-hook sees the task as it currently stands, plus what is being
+	// proposed, and runs before any of it is applied - a decline leaves t
+	// untouched.
+	if err := hooks.RunPre(env.Stderr, st.Root, st.Project, hooks.PreSet, t, map[string]string{
+		"BACKLOG_NEW_STATUS":   *status,
+		"BACKLOG_NEW_PRIORITY": *priority,
+		"BACKLOG_NEW_REASON":   *reason,
+		"BACKLOG_NEW_REFS":     strings.Join(refs, ","),
+	}); err != nil {
+		return err
+	}
 	if *status != "" {
 		// Leaving declined drops the reason: it describes a state the task is
 		// no longer in, and git keeps what it said.
@@ -281,6 +300,10 @@ func runSet(env Env, args []string) error {
 	if err := st.Save(t); err != nil {
 		return err
 	}
+	hooks.Run(env.Stderr, st.Root, st.Project, hooks.PostSet, t, map[string]string{
+		"BACKLOG_PREVIOUS_STATUS":   prevStatus,
+		"BACKLOG_PREVIOUS_PRIORITY": prevPriority,
+	})
 
 	if *asJSON {
 		return writeJSON(env.Stdout, view(t))
@@ -304,10 +327,17 @@ func runRm(env Env, args []string) error {
 	if err != nil {
 		return err
 	}
-	t, err := st.Remove(id)
+	t, err := st.Find(id)
 	if err != nil {
 		return err
 	}
+	if err := hooks.RunPre(env.Stderr, st.Root, st.Project, hooks.PreRemove, t, nil); err != nil {
+		return err
+	}
+	if _, err := st.Remove(id); err != nil {
+		return err
+	}
+	hooks.Run(env.Stderr, st.Root, st.Project, hooks.PostRemove, t, nil)
 
 	if *asJSON {
 		return writeJSON(env.Stdout, view(t))

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/weldnor/backlog/internal/hooks"
 	"github.com/weldnor/backlog/internal/task"
 )
 
@@ -58,6 +59,19 @@ func runEdit(env Env, args []string) error {
 		return err
 	}
 
+	newTags := t.Tags
+	if tags.touched {
+		newTags = task.NormalizeTags(tags.stringList)
+	}
+	// Runs before anything on t changes, so a decline leaves it untouched.
+	if err := hooks.RunPre(env.Stderr, st.Root, st.Project, hooks.PreEdit, t, map[string]string{
+		"BACKLOG_NEW_TITLE":       *title,
+		"BACKLOG_NEW_DESCRIPTION": *description,
+		"BACKLOG_NEW_TAGS":        strings.Join(newTags, ","),
+	}); err != nil {
+		return err
+	}
+
 	if *title != "" {
 		t.Title = strings.TrimSpace(*title)
 	}
@@ -65,11 +79,12 @@ func runEdit(env Env, args []string) error {
 		t.SetBody(*description)
 	}
 	if tags.touched {
-		t.Tags = task.NormalizeTags(tags.stringList)
+		t.Tags = newTags
 	}
 	if err := st.Save(t); err != nil {
 		return err
 	}
+	hooks.Run(env.Stderr, st.Root, st.Project, hooks.PostEdit, t, nil)
 
 	if *asJSON {
 		return writeJSON(env.Stdout, view(t))

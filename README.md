@@ -342,6 +342,7 @@ two agents on parallel branches do not conflict on the same lines.
 ```
 .backlog/
   tasks/      # every task, in every status
+  hooks/      # scripts run around add/set/edit/rm — see Hooks below
 ```
 
 Files are named `<id>-<slug>.md`, where the identifier is the lowest unused
@@ -415,6 +416,109 @@ identifier scheme are fixed.
 Entries in `metadata.refs` are stored verbatim and never resolved. The binary
 has no knowledge of OpenSpec, GitHub issues, or any other planning system; all
 of that lives in the triage skill.
+
+## Hooks
+
+A hook is a script that runs when a task changes, the way a git hook runs
+around a commit. It is how a Slack notification, a sync into an external
+tracker, a policy check, or any other reaction to the backlog is wired up,
+without the `backlog` binary knowing that system exists — it just runs
+whatever is in `.backlog/hooks/` and moves on.
+
+`backlog init` creates `.backlog/hooks/` (with a `README` explaining the
+mechanism) but installs no hooks; a fresh backlog behaves exactly as before
+until a script is added.
+
+There are two kinds, one pair per mutating command:
+
+| Event | Runs | Can it stop the change? |
+| --- | --- | --- |
+| `pre-add` / `post-add` | before / after `backlog add` creates a task | pre- can |
+| `pre-set` / `post-set` | before / after `backlog set` changes status, priority, reason or refs | pre- can |
+| `pre-edit` / `post-edit` | before / after `backlog edit` or `backlog tag` changes title, description or tags | pre- can |
+| `pre-rm` / `post-rm` | before / after `backlog rm` deletes a task | pre- can |
+
+A **post-** hook is a side effect, not a gate: it observes a change that
+already happened. A hook that fails — a non-zero exit, or one that could not
+be run at all — is reported to standard error, but the `backlog` command that
+triggered it still succeeds; the write already happened.
+
+A **pre-** hook is a gate: it runs before anything is written, and a non-zero
+exit stops the command with nothing changed — the task is not created,
+edited or deleted, and the reason the hook printed is what the caller sees.
+Unlike a post- hook, a pre- hook that exists but *could not be run at all*
+(missing interpreter, a script left non-executable) also blocks, rather than
+being skipped: a gate that quietly lets everything through when it fails to
+start would be worse than no gate at all. There is no way to fix a change
+from a pre- hook, only to allow or refuse it.
+
+To install one, add a file to `.backlog/hooks/` named for the event — for
+example `.backlog/hooks/pre-add` or `.backlog/hooks/post-add`. The task is
+passed to it two ways: as JSON on stdin (the same shape `--json` prints), and
+as environment variables for a one-liner that does not want to parse JSON:
+
+```
+BACKLOG_EVENT              the event name, e.g. pre-add
+BACKLOG_ROOT                absolute path of .backlog
+BACKLOG_PROJECT             absolute path of the project
+BACKLOG_TASK_ID
+BACKLOG_TASK_TITLE
+BACKLOG_TASK_STATUS
+BACKLOG_TASK_PRIORITY
+BACKLOG_TASK_TAGS           comma-joined
+BACKLOG_TASK_FILE           the task's file path
+```
+
+For `pre-add`, `BACKLOG_TASK_ID` and `BACKLOG_TASK_FILE` are empty: `add`
+claims the identifier and writes the file in the same atomic step, so neither
+exists yet when the hook that could still refuse it runs.
+
+`post-set` and `pre-set` additionally carry `BACKLOG_PREVIOUS_STATUS` /
+`BACKLOG_PREVIOUS_PRIORITY` and `BACKLOG_NEW_STATUS` / `BACKLOG_NEW_PRIORITY`
+/ `BACKLOG_NEW_REASON` / `BACKLOG_NEW_REFS` respectively — `pre-set` sees the
+task as it currently is (`BACKLOG_TASK_STATUS`, ...) alongside what is being
+proposed (`BACKLOG_NEW_STATUS`, ...), so it can decide from both. `pre-edit`
+carries `BACKLOG_NEW_TITLE` / `BACKLOG_NEW_DESCRIPTION` / `BACKLOG_NEW_TAGS`
+the same way, current state in `BACKLOG_TASK_*`, the proposed one in
+`BACKLOG_NEW_*`.
+
+A pre-hook that refuses a change, for example, might reject deleting anything
+still referenced elsewhere, or reject a status change that skips a status
+(`new` straight to `done`), or reject a tag your team has retired:
+
+```sh
+#!/bin/sh
+# .backlog/hooks/pre-set
+if [ "$BACKLOG_NEW_STATUS" = "done" ] && [ "$BACKLOG_TASK_STATUS" = "new" ]; then
+  echo "a task must go through todo or doing before done" >&2
+  exit 1
+fi
+```
+
+### Working on both Linux and Windows
+
+Rather than one script format, backlog looks for several shapes of the same
+event name and runs the first one it finds, so a project can ship whichever
+shape fits how it is developed. This applies the same way to every event name,
+`pre-` and `post-` alike — the examples below use `post-add`:
+
+| File | Runs via |
+| --- | --- |
+| `post-add` (no extension) | executed directly — needs a shebang and the exec bit; Unix only |
+| `post-add.ps1` | `pwsh` if installed, else Windows PowerShell — the one shape that runs unmodified on both Linux and Windows |
+| `post-add.sh` | `sh` explicitly — for a Windows machine with Git Bash or WSL on PATH |
+| `post-add.cmd` / `post-add.bat` | `cmd /C` |
+| `post-add.exe` | executed directly |
+
+A project that wants one hook script to work for every contributor typically
+writes it as `.ps1`: PowerShell ships with Windows, and PowerShell 7+ (`pwsh`)
+runs the same script on Linux and macOS. A project developed only on Unix can
+just write a shell script with a shebang and `chmod +x` it, the way a git hook
+would be written.
+
+If a hook file exists but cannot be run — a `.ps1` hook with no PowerShell on
+PATH, a bare script left non-executable — that is reported to standard error
+rather than silently skipped, so a broken hook is easy to notice.
 
 ## The agent workflow
 

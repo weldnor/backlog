@@ -11,6 +11,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/weldnor/backlog/internal/hooks"
 	"github.com/weldnor/backlog/internal/task"
 )
 
@@ -59,6 +60,54 @@ func Discover(start string) (*Store, error) {
 	}
 }
 
+// hooksReadme is dropped into a freshly created hooks directory so that a
+// backlog explains the mechanism where anyone browsing the directory will
+// find it, rather than only in the project README. It is written once, at
+// Init, and never overwritten - a project is free to replace it, and re-init
+// must not clobber that.
+const hooksReadme = `Drop a script here named for the event it should run on, and backlog will
+run it, with no configuration beyond the file existing. Two kinds:
+
+    post-add    after ` + "`backlog add`" + ` creates a task
+    post-set    after ` + "`backlog set`" + ` changes status, priority, reason or refs
+    post-edit   after ` + "`backlog edit`" + ` or ` + "`backlog tag`" + ` changes title, description or tags
+    post-rm     after ` + "`backlog rm`" + ` deletes a task
+
+    pre-add     before add; a non-zero exit stops the task from being created
+    pre-set     before set; a non-zero exit stops the change
+    pre-edit    before edit or tag; a non-zero exit stops the change
+    pre-rm      before rm; a non-zero exit stops the task from being deleted
+
+A post- hook is best-effort: it can observe a change, never block or undo
+one, so a failing or missing post- hook never fails the backlog command that
+triggered it. A pre- hook is a gate: it runs before anything is written, and
+a non-zero exit - or a hook that exists but could not be run at all, such as
+a .ps1 with no PowerShell installed - aborts the command with nothing
+changed and reports why.
+
+The task is passed as JSON on stdin and as BACKLOG_TASK_* environment
+variables (ID, TITLE, STATUS, PRIORITY, TAGS, FILE), alongside BACKLOG_EVENT,
+BACKLOG_ROOT and BACKLOG_PROJECT. For pre-add, the id and file are not yet
+assigned, since add claims them atomically as it writes the task; both
+variables are empty there. pre-set and pre-edit also carry BACKLOG_NEW_*
+variables describing the change being proposed (e.g. BACKLOG_NEW_STATUS),
+alongside the task's current, unmodified state.
+
+To work on both Linux and Windows without maintaining two scripts, name the
+file for how it should run - the first one found for an event wins:
+
+    post-add        an executable script with its own shebang (Unix only)
+    post-add.ps1     PowerShell - pwsh if present, else Windows PowerShell
+    post-add.sh      run explicitly with sh (needs sh on PATH)
+    post-add.cmd     run with cmd /C (needs cmd on PATH)
+    post-add.bat     same as .cmd
+    post-add.exe     run directly
+
+A .ps1 hook is usually the one script that works everywhere: Windows carries
+PowerShell out of the box, and pwsh (PowerShell 7+) runs on Linux and macOS
+too.
+`
+
 // Init creates the backlog directory structure under dir. It is idempotent:
 // re-running it over a backlog that already holds tasks leaves every task
 // untouched.
@@ -69,6 +118,20 @@ func Init(dir string) (*Store, error) {
 	}
 	root := filepath.Join(abs, DirName)
 	if err := os.MkdirAll(filepath.Join(root, TasksDir), 0o755); err != nil {
+		return nil, err
+	}
+	hooksDir := hooks.Dir(root)
+	if _, err := os.Stat(hooksDir); errors.Is(err, fs.ErrNotExist) {
+		if err := os.MkdirAll(hooksDir, 0o755); err != nil {
+			return nil, err
+		}
+		readme := filepath.Join(hooksDir, "README")
+		if _, err := os.Stat(readme); errors.Is(err, fs.ErrNotExist) {
+			if err := os.WriteFile(readme, []byte(hooksReadme), 0o644); err != nil {
+				return nil, err
+			}
+		}
+	} else if err != nil {
 		return nil, err
 	}
 	return &Store{Root: root, Project: abs}, nil
