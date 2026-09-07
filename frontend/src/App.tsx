@@ -21,7 +21,7 @@ import { useTasks } from "./useTasks";
 
 type View = "list" | "board";
 type DialogMode = "read" | "edit" | "create";
-type FilterKey = "status" | "priority" | "tag";
+type FilterKey = "status" | "priority" | "tag" | "assignee";
 
 interface State {
   view: View;
@@ -29,6 +29,7 @@ interface State {
   status: string | null;
   priority: string | null;
   tag: string | null;
+  assignee: string | null;
   dialogMode: DialogMode | null;
   openTask: TaskView | null;
   error: string;
@@ -52,6 +53,7 @@ const initialState: State = {
   status: null,
   priority: null,
   tag: null,
+  assignee: null,
   dialogMode: null,
   openTask: null,
   error: "",
@@ -113,6 +115,7 @@ function currentCommand(state: State): string {
   }
   if (state.priority) parts.push("--priority", state.priority);
   if (state.tag) parts.push("--tag", state.tag);
+  if (state.assignee) parts.push("--assignee", state.assignee);
   parts.push("--json");
   return parts.join(" ");
 }
@@ -129,6 +132,7 @@ export function App() {
     status: state.status,
     priority: state.priority,
     tag: state.tag,
+    assignee: state.assignee,
   });
 
   useEffect(() => {
@@ -239,6 +243,7 @@ export function App() {
           status={state.status}
           priority={state.priority}
           tag={state.tag}
+          assignee={state.assignee}
           onPick={(key, value) =>
             dispatch({ type: "toggle_filter", key, value })
           }

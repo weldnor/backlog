@@ -186,6 +186,7 @@ type createRequest struct {
 	Description string     `json:"description"`
 	Tags        []string   `json:"tags"`
 	Priority    string     `json:"priority"`
+	Assignee    string     `json:"assignee"`
 	Files       []string   `json:"files"`
 	Refs        []string   `json:"refs"`
 	Links       []linkJSON `json:"links"`
@@ -230,6 +231,7 @@ func handleCreateTask(st *store.Store, opts Options) http.HandlerFunc {
 		t := task.New(title, req.Description, req.Tags, req.Files, req.Refs,
 			task.AuthorHuman, priority, store.Provenance(st.Project), time.Now())
 		t.Links = links
+		t.Assignee = strings.TrimSpace(req.Assignee)
 		if err := hooks.RunPre(hookDiag(opts), st.Root, st.Project, hooks.PreAdd, t, nil); err != nil {
 			writeError(w, http.StatusConflict, err.Error())
 			return
@@ -253,6 +255,7 @@ type patchRequest struct {
 	Priority    *string     `json:"priority"`
 	Status      *string     `json:"status"`
 	Reason      *string     `json:"reason"`
+	Assignee    *string     `json:"assignee"`
 	Refs        *[]string   `json:"refs"`
 	Links       *[]linkJSON `json:"links"`
 }
@@ -276,7 +279,7 @@ func handlePatchTask(st *store.Store, opts Options) http.HandlerFunc {
 			return
 		}
 
-		prevStatus, prevPriority := t.Status, t.Priority
+		prevStatus, prevPriority, prevAssignee := t.Status, t.Priority, t.Assignee
 		// Pre-hooks run against t as it stands now, before applyPatch touches
 		// it, mirroring the same split the CLI's `set` and `edit` make.
 		if req.Status != nil || req.Priority != nil || req.Reason != nil || req.Refs != nil {
@@ -306,6 +309,14 @@ func handlePatchTask(st *store.Store, opts Options) http.HandlerFunc {
 				return
 			}
 		}
+		if req.Assignee != nil {
+			if err := hooks.RunPre(hookDiag(opts), st.Root, st.Project, hooks.PreAssign, t, map[string]string{
+				"BACKLOG_NEW_ASSIGNEE": strings.TrimSpace(*req.Assignee),
+			}); err != nil {
+				writeError(w, http.StatusConflict, err.Error())
+				return
+			}
+		}
 		if err := applyPatch(t, req); err != nil {
 			writeError(w, http.StatusBadRequest, err.Error())
 			return
@@ -327,6 +338,11 @@ func handlePatchTask(st *store.Store, opts Options) http.HandlerFunc {
 		}
 		if req.Title != nil || req.Description != nil || req.Tags != nil || req.Links != nil {
 			hooks.Run(hookDiag(opts), st.Root, st.Project, hooks.PostEdit, t, nil)
+		}
+		if req.Assignee != nil {
+			hooks.Run(hookDiag(opts), st.Root, st.Project, hooks.PostAssign, t, map[string]string{
+				"BACKLOG_PREVIOUS_ASSIGNEE": prevAssignee,
+			})
 		}
 		writeJSON(w, taskview.View(t))
 	}
@@ -415,6 +431,9 @@ func applyPatch(t *task.Task, req patchRequest) error {
 	if req.Tags != nil {
 		t.Tags = task.NormalizeTags(*req.Tags)
 	}
+	if req.Assignee != nil {
+		t.Assignee = strings.TrimSpace(*req.Assignee)
+	}
 	if req.Refs != nil {
 		refs := make([]string, 0, len(*req.Refs))
 		refs = append(refs, (*req.Refs)...)
@@ -442,6 +461,7 @@ func selectTasks(st *store.Store, q url.Values) ([]*task.Task, error) {
 		return nil, err
 	}
 	tags := q["tag"]
+	assignee := strings.TrimSpace(q.Get("assignee"))
 
 	all, err := st.Tasks()
 	if err != nil {
@@ -456,6 +476,9 @@ func selectTasks(st *store.Store, q url.Values) ([]*task.Task, error) {
 			continue
 		}
 		if !hasAllTags(t, tags) {
+			continue
+		}
+		if assignee != "" && !strings.EqualFold(t.Assignee, assignee) {
 			continue
 		}
 		out = append(out, t)

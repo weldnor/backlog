@@ -135,6 +135,30 @@ func TestListTasksFiltersByStatusTagPriority(t *testing.T) {
 	}
 }
 
+func TestListTasksFiltersByAssignee(t *testing.T) {
+	st := newTestStore(t)
+	a := addTask(t, st, "a", task.StatusTodo, task.PriorityHigh, nil)
+	addTask(t, st, "b", task.StatusTodo, task.PriorityLow, nil)
+	a.Assignee = "alice"
+	if err := st.Save(a); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	h := newTestMux(t, st)
+	w := doJSON(t, h, http.MethodGet, "/api/tasks?assignee=alice", nil)
+	got := decodeBody[[]taskview.TaskView](t, w)
+	if len(got) != 1 || got[0].Title != "a" {
+		t.Fatalf("assignee=alice = %+v, want just %q", got, "a")
+	}
+
+	// Case-insensitive, matching the tag and priority filters.
+	w = doJSON(t, h, http.MethodGet, "/api/tasks?assignee=ALICE", nil)
+	got = decodeBody[[]taskview.TaskView](t, w)
+	if len(got) != 1 || got[0].Title != "a" {
+		t.Fatalf("assignee=ALICE = %+v, want just %q", got, "a")
+	}
+}
+
 func TestListTasksRejectsUnknownFilter(t *testing.T) {
 	h := newTestMux(t, newTestStore(t))
 	w := doJSON(t, h, http.MethodGet, "/api/tasks?status=bogus", nil)
@@ -205,6 +229,20 @@ func TestCreateTaskFullContext(t *testing.T) {
 	if got.Priority != task.PriorityHigh || got.Description != "body text" ||
 		len(got.Tags) != 2 || len(got.Metadata.Source.Files) != 1 || len(got.Metadata.Refs) != 1 {
 		t.Errorf("created task = %+v, missing supplied fields", got)
+	}
+}
+
+func TestCreateTaskWithAssignee(t *testing.T) {
+	st := newTestStore(t)
+	h := newTestMux(t, st)
+	req := createRequest{Title: "captured", Assignee: "  alice  "}
+	w := doJSON(t, h, http.MethodPost, "/api/tasks", req)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("status = %d, body %s", w.Code, w.Body.String())
+	}
+	got := decodeBody[taskview.TaskView](t, w)
+	if got.Assignee != "alice" {
+		t.Errorf("Assignee = %q, want trimmed \"alice\"", got.Assignee)
 	}
 }
 
@@ -305,6 +343,29 @@ func TestPatchDescriptionOnlyLeavesOtherFieldsUnchanged(t *testing.T) {
 	if got.Title != "keep me" || got.Status != task.StatusDoing || got.Priority != task.PriorityHigh ||
 		len(got.Tags) != 1 || got.Tags[0] != "bug" || got.Description != desc {
 		t.Errorf("patched task = %+v, only description should have changed", got)
+	}
+}
+
+func TestPatchSetsAndClearsAssignee(t *testing.T) {
+	st := newTestStore(t)
+	tk := addTask(t, st, "keep me", task.StatusDoing, task.PriorityHigh, nil)
+	h := newTestMux(t, st)
+
+	assignee := "alice"
+	w := doJSON(t, h, http.MethodPatch, "/api/tasks/"+itoa(tk.ID), patchRequest{Assignee: &assignee})
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, body %s", w.Code, w.Body.String())
+	}
+	got := decodeBody[taskview.TaskView](t, w)
+	if got.Assignee != "alice" {
+		t.Fatalf("Assignee = %q, want alice", got.Assignee)
+	}
+
+	empty := ""
+	w2 := doJSON(t, h, http.MethodPatch, "/api/tasks/"+itoa(tk.ID), patchRequest{Assignee: &empty})
+	got2 := decodeBody[taskview.TaskView](t, w2)
+	if got2.Assignee != "" {
+		t.Fatalf("Assignee = %q, want cleared", got2.Assignee)
 	}
 }
 

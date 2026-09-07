@@ -17,6 +17,7 @@ function task(over: Partial<TaskView> & { id: number; title: string }): TaskView
     status: "todo",
     priority: "medium",
     reason: "",
+    assignee: "",
     tags: [],
     links: [],
     description: "",

@@ -26,6 +26,7 @@ export function ListView({ tasks, openId, onOpen }: ListViewProps) {
           <col className="col-priority" style={{ width: "104px" }} />
           <col />
           <col className="col-tags" style={{ width: "210px" }} />
+          <col style={{ width: "130px" }} />
           <col className="col-status" style={{ width: "110px" }} />
         </colgroup>
         <thead>
@@ -34,6 +35,7 @@ export function ListView({ tasks, openId, onOpen }: ListViewProps) {
             <th>Priority</th>
             <th>Title</th>
             <th>Tags</th>
+            <th>Assignee</th>
             <th>Status</th>
           </tr>
         </thead>
@@ -66,6 +68,7 @@ export function ListView({ tasks, openId, onOpen }: ListViewProps) {
                     <TagChips tags={t.tags} />
                   </div>
                 </td>
+                <td>{t.assignee || <span className="meta-none">unassigned</span>}</td>
                 <td className={"status-label " + st.fg}>{st.headLabel}</td>
               </tr>
             );

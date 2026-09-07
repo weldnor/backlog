@@ -57,6 +57,7 @@ func Parse(name string, data []byte) (*Task, error) {
 	t.readPriority(root)
 	t.readReason(root)
 	t.checkReasonPairing()
+	t.readAssignee(root)
 	t.readTags(root)
 	t.readLinks(root)
 	t.readMetadata(root)
@@ -232,6 +233,26 @@ func (t *Task) checkReasonPairing() {
 		t.issue(SeverityError, false,
 			"reason is recorded but the status is %q; a reason applies only to a %s task", t.Status, StatusDeclined)
 	}
+}
+
+// readAssignee reads the optional `assignee` field. Unlike reason, it pairs
+// with no status: a task can be assigned in any non-terminal status, and
+// stays assigned through done or declined as a record of who did the work.
+func (t *Task) readAssignee(root *yaml.Node) {
+	n, ok := mapGet(root, "assignee")
+	if !ok {
+		return
+	}
+	if n.Kind == yaml.ScalarNode && n.Tag == "!!null" {
+		return
+	}
+	if n.Kind != yaml.ScalarNode {
+		t.issue(SeverityError, false, "assignee must be a string")
+		return
+	}
+	// Stored verbatim: it names a person or handle, and nothing about it is
+	// the tool's to normalise.
+	t.Assignee = n.Value
 }
 
 func (t *Task) readTags(root *yaml.Node) {

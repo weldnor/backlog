@@ -18,6 +18,9 @@ export function ReadView({ task, onOpenLink }: ReadViewProps) {
       <div className="read-top">
         <span className={p.cls}>{p.label}</span>
         <span className={"read-status " + st.fg}>{st.headLabel}</span>
+        {task.assignee ? (
+          <span className="tag tag-neutral">@{task.assignee}</span>
+        ) : null}
       </div>
       <h2 className="read-title">{task.title}</h2>
       <div className="hr" />

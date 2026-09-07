@@ -85,6 +85,9 @@ export function BoardView({ tasks, onOpen, onMove }: BoardViewProps) {
                     </div>
                     <div className="board-card-title">{t.title}</div>
                     <div className="board-card-file">{file}</div>
+                    {t.assignee ? (
+                      <div className="board-card-file">@{t.assignee}</div>
+                    ) : null}
                     <div className="board-card-tags">
                       <TagChips tags={t.tags} />
                     </div>

@@ -20,6 +20,10 @@ type scope struct {
 	// already been recorded, which is a question about content: letting a
 	// severity filter narrow it would let a duplicate hide behind the filter.
 	priorities stringList
+	// assignee is bound by list alone, for the same reason priorities is: who
+	// a finding is assigned to is workflow state, not content a duplicate
+	// check should be able to hide behind.
+	assignee string
 }
 
 func (s *scope) register(fs *flag.FlagSet) {
@@ -30,6 +34,12 @@ func (s *scope) register(fs *flag.FlagSet) {
 // because only list offers it.
 func (s *scope) registerPriority(fs *flag.FlagSet) {
 	fs.Var(&s.priorities, "priority", "only tasks with this priority (repeatable; any may match)")
+}
+
+// registerAssignee binds the assignee filter, matched case-insensitively.
+// It is separate from register because only list offers it.
+func (s *scope) registerAssignee(fs *flag.FlagSet) {
+	fs.StringVar(&s.assignee, "assignee", "", "only tasks assigned to this person")
 }
 
 // selectedPriorities returns the priorities in scope, or nil when the filter
@@ -84,6 +94,9 @@ func (s *scope) apply(st *store.Store) ([]*task.Task, error) {
 			continue
 		}
 		if !hasAllTags(t, s.tags) {
+			continue
+		}
+		if s.assignee != "" && !strings.EqualFold(t.Assignee, s.assignee) {
 			continue
 		}
 		out = append(out, t)
