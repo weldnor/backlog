@@ -177,6 +177,29 @@ Setting a task to `declined` SHALL require a reason and SHALL fail without one, 
 - **WHEN** a task already in status `doing` is set to `doing`
 - **THEN** the command succeeds and the task is left in a valid state
 
+### Requirement: Blocked-by links constrain completion
+The CLI SHALL refuse to set a task's status to `done` while it records a `blocked-by` link to another task whose own status is not `done` or `declined`. A blocker that is itself `declined` counts as resolved, since deciding not to act on it is still a disposition of it. The check is against links exactly as they stand once the invocation's own link changes, if any, are applied, so removing the blocking link in the same operation that marks the task done SHALL be permitted. The restriction applies only to reaching `done`; every other status transition SHALL be unaffected by a task's links.
+
+#### Scenario: An unfinished blocker prevents completion
+- **WHEN** `backlog set` is invoked to mark a task `done` while it is `blocked-by` a task in status `todo` or `doing`
+- **THEN** the command exits non-zero, names the blocking task and its status, and the task is left unchanged
+
+#### Scenario: A declined blocker does not prevent completion
+- **WHEN** a task's `blocked-by` target is in status `declined`
+- **THEN** the blocked task can be set to `done`
+
+#### Scenario: A finished blocker does not prevent completion
+- **WHEN** a task's `blocked-by` target is in status `done`
+- **THEN** the blocked task can be set to `done`
+
+#### Scenario: Unlinking the blocker allows completion
+- **WHEN** the `blocked-by` link to an unfinished task is removed, whether in a prior command or in the same request that sets the status to `done`
+- **THEN** the task can be set to `done`
+
+#### Scenario: Blocking does not affect other transitions
+- **WHEN** a task with an unfinished `blocked-by` link is set to `doing` or `declined`
+- **THEN** the command succeeds
+
 ### Requirement: Removing a task
 The CLI SHALL provide an `rm` command that permanently deletes a task by identifier from either the active or the archive directory. Removal SHALL be reserved for a task that should never have been recorded — a duplicate, a mis-capture, an accidental entry — and SHALL NOT be the way a reviewer records a decision not to act on a finding, which is what status `declined` is for. The CLI SHALL enforce no such distinction; it is a matter of guidance, and `rm` SHALL delete whatever identifier it is given.
 

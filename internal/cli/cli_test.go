@@ -437,6 +437,77 @@ func TestSet(t *testing.T) {
 	})
 }
 
+func TestSetRejectsDoneWhileBlocked(t *testing.T) {
+	h := newHarness(t)
+	h.initBacklog()
+	h.mustRun("add", "the blocker")
+	h.mustRun("add", "the blocked task")
+	h.mustRun("link", "add", "2", "blocked-by", "1")
+
+	t.Run("cannot be marked done while the blocker is unfinished", func(t *testing.T) {
+		code, stdout, stderr := h.run("set", "2", "done")
+		if code == 0 {
+			t.Error("marking a blocked task done exited zero")
+		}
+		if stdout != "" {
+			t.Errorf("stdout = %q, want it empty", stdout)
+		}
+		if !strings.Contains(stderr, "blocked by task 1") {
+			t.Errorf("stderr = %q, want it to name the blocker", stderr)
+		}
+		var got TaskView
+		decode(t, h.mustRun("show", "2", "--json"), &got)
+		if got.Status != "new" {
+			t.Errorf("Status = %q, want the task unchanged", got.Status)
+		}
+	})
+
+	t.Run("other statuses are unaffected", func(t *testing.T) {
+		h.mustRun("set", "2", "doing")
+		var got TaskView
+		decode(t, h.mustRun("show", "2", "--json"), &got)
+		if got.Status != "doing" {
+			t.Errorf("Status = %q", got.Status)
+		}
+	})
+
+	t.Run("finishing the blocker allows it", func(t *testing.T) {
+		h.mustRun("set", "1", "done")
+		h.mustRun("set", "2", "done")
+		var got TaskView
+		decode(t, h.mustRun("show", "2", "--json"), &got)
+		if got.Status != "done" {
+			t.Errorf("Status = %q", got.Status)
+		}
+	})
+}
+
+func TestSetAllowsDoneWhenBlockerIsDeclined(t *testing.T) {
+	h := newHarness(t)
+	h.initBacklog()
+	h.mustRun("add", "the blocker")
+	h.mustRun("add", "the blocked task")
+	h.mustRun("link", "add", "2", "blocked-by", "1")
+
+	h.mustRun("set", "1", "declined", "--reason", "not worth doing")
+	if code, _, stderr := h.run("set", "2", "done"); code != 0 {
+		t.Errorf("a declined blocker still blocked completion: %s", stderr)
+	}
+}
+
+func TestSetAllowsDoneAfterUnlinkingTheBlocker(t *testing.T) {
+	h := newHarness(t)
+	h.initBacklog()
+	h.mustRun("add", "the blocker")
+	h.mustRun("add", "the blocked task")
+	h.mustRun("link", "add", "2", "blocked-by", "1")
+
+	h.mustRun("link", "rm", "2", "blocked-by", "1")
+	if code, _, stderr := h.run("set", "2", "done"); code != 0 {
+		t.Errorf("unlinking the blocker did not allow completion: %s", stderr)
+	}
+}
+
 func TestRm(t *testing.T) {
 	h := newHarness(t)
 	h.initBacklog()

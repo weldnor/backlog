@@ -9,7 +9,9 @@
 package task
 
 import (
+	"fmt"
 	"sort"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
@@ -55,6 +57,48 @@ func ValidStatus(s string) bool {
 // the decline-reason rules.
 func IsTerminal(s string) bool {
 	return s == StatusDone || s == StatusDeclined
+}
+
+// Blockers returns the tasks that keep t from being marked done: those among
+// all that t records a blocked-by link to and whose own status is not yet
+// terminal. Declining a blocker counts as clearing it — a decision not to
+// act on the blocker is still a resolution of it — so only StatusDone and
+// StatusDeclined release a task it blocks. A link whose target is absent
+// from all — a dangling id — is not a blocker here; `backlog validate`, not
+// this check, is what reports a missing target. The result is ordered the
+// same way t.Links is, for a deterministic error message.
+func Blockers(t *Task, all []*Task) []*Task {
+	byID := make(map[int]*Task, len(all))
+	for _, other := range all {
+		byID[other.ID] = other
+	}
+	var blockers []*Task
+	for _, l := range t.Links {
+		if l.Type != LinkBlockedBy {
+			continue
+		}
+		other, ok := byID[l.ID]
+		if !ok || IsTerminal(other.Status) {
+			continue
+		}
+		blockers = append(blockers, other)
+	}
+	return blockers
+}
+
+// DescribeBlockers renders the reason a `set` or a PATCH refuses to mark a
+// task done: which unfinished tasks it is blocked by, so the reader knows
+// exactly what to finish, decline, or unlink. blockers must be non-empty.
+func DescribeBlockers(blockers []*Task) string {
+	names := make([]string, 0, len(blockers))
+	for _, b := range blockers {
+		names = append(names, fmt.Sprintf("%d (%s)", b.ID, b.Status))
+	}
+	noun := "task"
+	if len(blockers) > 1 {
+		noun = "tasks"
+	}
+	return fmt.Sprintf("blocked by %s %s", noun, strings.Join(names, ", "))
 }
 
 // The three permitted priorities. Priority records how bad a finding is — the
