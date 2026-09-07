@@ -190,6 +190,21 @@ task that is already `declined`. Setting a declined task to any other status
 clears the reason. A decline nobody can audit is the state the status exists to
 eliminate, which is why the reason is not optional.
 
+A task cannot be set to `done` while it records a `blocked-by` link to a task
+that is not itself `done` or `declined`:
+
+```
+$ backlog set 7 done
+task 7 cannot be marked done: blocked by task 3 (todo); finish, decline, or unlink it first
+```
+
+The fix is one of those three: finish or decline task 3, or remove the link
+with `backlog link rm 7 blocked-by 3`. There is no override flag — bypassing
+the check without touching the link would make it record a false claim about
+what is still outstanding. The restriction only ever stops a move to `done`;
+every other transition, including moving a blocked task to `doing`, is
+unaffected.
+
 ### `backlog edit`
 
 Changes title, description, tags or links — the fields `set` deliberately does
