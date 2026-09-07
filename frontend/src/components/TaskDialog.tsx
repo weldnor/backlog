@@ -12,6 +12,8 @@ import { ReadView } from "./ReadView";
 interface TaskDialogProps {
   mode: "read" | "edit" | "create";
   task: TaskView | null;
+  // The full task set, threaded down to the edit form's links picker.
+  tasks: TaskView[];
   error: string;
   onClose: () => void;
   onToggleEdit: () => void;
@@ -27,7 +29,7 @@ const FOCUSABLE =
   'a[href], button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
 export function TaskDialog(props: TaskDialogProps) {
-  const { mode, task, error, onClose, onToggleEdit, onCancelEdit } = props;
+  const { mode, task, tasks, error, onClose, onToggleEdit, onCancelEdit } = props;
 
   const portalEl = useMemo(() => document.createElement("div"), []);
   const dialogRef = useRef<HTMLDivElement>(null);
@@ -138,6 +140,7 @@ export function TaskDialog(props: TaskDialogProps) {
       <div style={{ padding: "20px 20px 24px" }}>
         <EditForm
           mode="create"
+          tasks={tasks}
           error={error}
           onCancel={onClose}
           onCreate={props.onCreate}
@@ -153,6 +156,7 @@ export function TaskDialog(props: TaskDialogProps) {
             <EditForm
               mode="edit"
               task={task}
+              tasks={tasks}
               error={error}
               onCancel={onCancelEdit}
               onCreate={props.onCreate}

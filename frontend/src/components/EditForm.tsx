@@ -1,15 +1,8 @@
 import { useState } from "react";
 
-import type { CreateTaskBody, PatchTaskBody, TaskView } from "../api";
-import {
-  joinLinks,
-  LINK_TYPES,
-  PRI_META,
-  PRI_ORDER,
-  splitLinks,
-  splitList,
-  STATUS_ORDER,
-} from "../constants";
+import type { CreateTaskBody, LinkView, PatchTaskBody, TaskView } from "../api";
+import { PRI_META, PRI_ORDER, splitList, STATUS_ORDER } from "../constants";
+import { LinksEditor } from "./LinksEditor";
 import { SaveIcon } from "./icons";
 
 interface Draft {
@@ -17,7 +10,7 @@ interface Draft {
   status: string;
   priority: string;
   tags: string;
-  links: string;
+  links: LinkView[];
   body: string;
   reason: string;
   files: string;
@@ -31,7 +24,7 @@ function draftFor(task?: TaskView): Draft {
       status: "new",
       priority: "medium",
       tags: "",
-      links: "",
+      links: [],
       body: "",
       reason: "",
       files: "",
@@ -43,7 +36,7 @@ function draftFor(task?: TaskView): Draft {
     status: task.status,
     priority: task.priority,
     tags: task.tags.join(", "),
-    links: joinLinks(task.links),
+    links: task.links,
     body: task.description,
     reason: task.reason || "",
     files: "",
@@ -54,6 +47,9 @@ function draftFor(task?: TaskView): Draft {
 interface EditFormProps {
   mode: "edit" | "create";
   task?: TaskView;
+  // The full task set, so the links editor can search targets by title and
+  // label existing links — not just bare ids.
+  tasks: TaskView[];
   error: string;
   onCancel: () => void;
   onCreate: (body: CreateTaskBody) => void;
@@ -64,6 +60,7 @@ interface EditFormProps {
 export function EditForm({
   mode,
   task,
+  tasks,
   error,
   onCancel,
   onCreate,
@@ -95,7 +92,7 @@ export function EditForm({
         priority: draft.priority,
         files: splitList(draft.files),
         refs: splitList(draft.refs),
-        links: splitLinks(draft.links),
+        links: draft.links,
       });
     } else {
       onPatch({
@@ -105,7 +102,7 @@ export function EditForm({
         priority: draft.priority,
         status: draft.status,
         reason: draft.status === "declined" ? draft.reason : "",
-        links: splitLinks(draft.links),
+        links: draft.links,
       });
     }
   }
@@ -169,19 +166,12 @@ export function EditForm({
         />
       </div>
 
-      <div className="field" style={{ marginBottom: 16 }}>
-        <label>
-          Links — comma separated type:id, e.g. blocks:5, related:12 — one
-          side only, never mirrored onto the other task
-        </label>
-        <input
-          className="input"
-          value={draft.links}
-          onChange={(e) => set("links", e.target.value)}
-          placeholder={LINK_TYPES.join(" · ")}
-          style={{ fontFamily: "var(--font-mono)", fontSize: 13 }}
-        />
-      </div>
+      <LinksEditor
+        links={draft.links}
+        tasks={tasks}
+        excludeId={task?.id}
+        onChange={(links) => set("links", links)}
+      />
 
       {isCreate ? (
         <div className="edit-row">

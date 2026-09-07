@@ -1,4 +1,4 @@
-import type { LinkView, TaskView } from "./api";
+import type { TaskView } from "./api";
 
 // Fixed lifecycle order, matching internal/task and the old app.js.
 export const STATUS_ORDER = ["new", "todo", "doing", "done", "declined"] as const;
@@ -70,25 +70,4 @@ export function splitList(s: string): string[] {
     .split(",")
     .map((x) => x.trim())
     .filter(Boolean);
-}
-
-// splitLinks parses the edit form's comma-separated "type:id" shorthand,
-// e.g. "blocks:5, related:12". An entry that does not parse is dropped
-// rather than failing the whole list — the server is what validates a link
-// type or id it does not recognise, the same way it validates a tag or a
-// priority.
-export function splitLinks(s: string): LinkView[] {
-  const out: LinkView[] = [];
-  for (const entry of splitList(s)) {
-    const [type, idStr] = entry.split(":").map((x) => x.trim());
-    const id = Number(idStr);
-    if (type && Number.isFinite(id) && id > 0) {
-      out.push({ type, id });
-    }
-  }
-  return out;
-}
-
-export function joinLinks(links: LinkView[]): string {
-  return links.map((l) => `${l.type}:${l.id}`).join(", ");
 }

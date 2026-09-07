@@ -263,6 +263,7 @@ export function App() {
         <TaskDialog
           mode={state.dialogMode}
           task={state.openTask}
+          tasks={all}
           error={state.error}
           onClose={() => dispatch({ type: "close" })}
           onToggleEdit={() =>
