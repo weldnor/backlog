@@ -109,3 +109,69 @@ func TestSortByPriorityThenIDIsStable(t *testing.T) {
 		}
 	}
 }
+
+func TestBlockers(t *testing.T) {
+	blocker := &Task{ID: 1, Status: StatusTodo}
+	unrelated := &Task{ID: 2, Status: StatusTodo}
+	all := []*Task{blocker, unrelated}
+
+	t.Run("an unfinished blocked-by target blocks", func(t *testing.T) {
+		tk := &Task{ID: 3, Links: []Link{{Type: LinkBlockedBy, ID: blocker.ID}}}
+		got := Blockers(tk, all)
+		if len(got) != 1 || got[0].ID != blocker.ID {
+			t.Fatalf("Blockers = %+v, want [blocker]", got)
+		}
+	})
+
+	t.Run("a done blocked-by target does not block", func(t *testing.T) {
+		done := &Task{ID: 1, Status: StatusDone}
+		tk := &Task{ID: 3, Links: []Link{{Type: LinkBlockedBy, ID: done.ID}}}
+		if got := Blockers(tk, []*Task{done}); len(got) != 0 {
+			t.Fatalf("Blockers = %+v, want none", got)
+		}
+	})
+
+	t.Run("a declined blocked-by target does not block", func(t *testing.T) {
+		declined := &Task{ID: 1, Status: StatusDeclined}
+		tk := &Task{ID: 3, Links: []Link{{Type: LinkBlockedBy, ID: declined.ID}}}
+		if got := Blockers(tk, []*Task{declined}); len(got) != 0 {
+			t.Fatalf("Blockers = %+v, want none", got)
+		}
+	})
+
+	t.Run("other link types do not block", func(t *testing.T) {
+		tk := &Task{ID: 3, Links: []Link{
+			{Type: LinkBlocks, ID: blocker.ID},
+			{Type: LinkRelated, ID: unrelated.ID},
+		}}
+		if got := Blockers(tk, all); len(got) != 0 {
+			t.Fatalf("Blockers = %+v, want none", got)
+		}
+	})
+
+	t.Run("a dangling target does not block", func(t *testing.T) {
+		tk := &Task{ID: 3, Links: []Link{{Type: LinkBlockedBy, ID: 99}}}
+		if got := Blockers(tk, all); len(got) != 0 {
+			t.Fatalf("Blockers = %+v, want none", got)
+		}
+	})
+
+	t.Run("no links means no blockers", func(t *testing.T) {
+		tk := &Task{ID: 3}
+		if got := Blockers(tk, all); len(got) != 0 {
+			t.Fatalf("Blockers = %+v, want none", got)
+		}
+	})
+}
+
+func TestDescribeBlockers(t *testing.T) {
+	got := DescribeBlockers([]*Task{{ID: 1, Status: StatusTodo}})
+	if want := "blocked by task 1 (todo)"; got != want {
+		t.Errorf("DescribeBlockers = %q, want %q", got, want)
+	}
+
+	got = DescribeBlockers([]*Task{{ID: 1, Status: StatusTodo}, {ID: 2, Status: StatusDoing}})
+	if want := "blocked by tasks 1 (todo), 2 (doing)"; got != want {
+		t.Errorf("DescribeBlockers = %q, want %q", got, want)
+	}
+}

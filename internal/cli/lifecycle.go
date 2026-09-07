@@ -281,6 +281,19 @@ func runSet(env Env, args []string) error {
 		return usagef("task %d is %s, not %s; --reason applies only to a %s task",
 			t.ID, t.Status, task.StatusDeclined, task.StatusDeclined)
 	}
+	// A task cannot finish ahead of what it is blocked-by: that link says
+	// another task's work must land first, and the only way around it is to
+	// edit the link, not to race it to done.
+	if *status == task.StatusDone {
+		all, err := st.Tasks()
+		if err != nil {
+			return err
+		}
+		if blockers := task.Blockers(t, all); len(blockers) > 0 {
+			return usagef("task %d cannot be marked done: %s; finish, decline, or unlink it first",
+				t.ID, task.DescribeBlockers(blockers))
+		}
+	}
 	prevStatus, prevPriority := t.Status, t.Priority
 	// The pre-hook sees the task as it currently stands, plus what is being
 	// proposed, and runs before any of it is applied - a decline leaves t

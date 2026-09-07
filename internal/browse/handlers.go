@@ -279,6 +279,33 @@ func handlePatchTask(st *store.Store, opts Options) http.HandlerFunc {
 			return
 		}
 
+		// A task cannot finish ahead of what it is blocked-by: that link says
+		// another task's work must land first, and the only way around it is
+		// to edit the link, not to race it to done. Checked against the
+		// links the request would leave in place, so a request that clears
+		// the blocking link in the same PATCH is not refused for it.
+		if req.Status != nil && *req.Status == task.StatusDone {
+			links := t.Links
+			if req.Links != nil {
+				parsed, err := toLinks(derefLinks(req.Links))
+				if err != nil {
+					writeError(w, http.StatusBadRequest, err.Error())
+					return
+				}
+				links = parsed
+			}
+			all, err := st.Tasks()
+			if err != nil {
+				writeError(w, http.StatusInternalServerError, err.Error())
+				return
+			}
+			if blockers := task.Blockers(&task.Task{ID: t.ID, Links: links}, all); len(blockers) > 0 {
+				writeError(w, http.StatusConflict, fmt.Sprintf("task %d cannot be marked done: %s; finish, decline, or unlink it first",
+					t.ID, task.DescribeBlockers(blockers)))
+				return
+			}
+		}
+
 		prevStatus, prevPriority, prevAssignee := t.Status, t.Priority, t.Assignee
 		// Pre-hooks run against t as it stands now, before applyPatch touches
 		// it, mirroring the same split the CLI's `set` and `edit` make.

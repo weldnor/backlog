@@ -395,6 +395,56 @@ func TestPatchSetsAndReplacesLinks(t *testing.T) {
 	}
 }
 
+func TestPatchRejectsDoneWhileBlocked(t *testing.T) {
+	st := newTestStore(t)
+	blocker := addTask(t, st, "the blocker", task.StatusTodo, task.PriorityMedium, nil)
+	tk := addTask(t, st, "the blocked task", task.StatusTodo, task.PriorityMedium, nil)
+	tk.Links = []task.Link{{Type: task.LinkBlockedBy, ID: blocker.ID}}
+	if err := st.Save(tk); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	h := newTestMux(t, st)
+
+	status := task.StatusDone
+	w := doJSON(t, h, http.MethodPatch, "/api/tasks/"+itoa(tk.ID), patchRequest{Status: &status})
+	if w.Code != http.StatusConflict {
+		t.Fatalf("status = %d, want 409 while blocked, body %s", w.Code, w.Body.String())
+	}
+	onDisk, _ := st.Find(tk.ID)
+	if onDisk.Status != task.StatusTodo {
+		t.Errorf("task status changed to %q despite the rejected request", onDisk.Status)
+	}
+
+	t.Run("declining the blocker clears it", func(t *testing.T) {
+		blockerStatus, reason := task.StatusDeclined, "not worth it"
+		if w := doJSON(t, h, http.MethodPatch, "/api/tasks/"+itoa(blocker.ID), patchRequest{Status: &blockerStatus, Reason: &reason}); w.Code != http.StatusOK {
+			t.Fatalf("declining the blocker: status = %d, body %s", w.Code, w.Body.String())
+		}
+		w := doJSON(t, h, http.MethodPatch, "/api/tasks/"+itoa(tk.ID), patchRequest{Status: &status})
+		if w.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200 once the blocker is declined, body %s", w.Code, w.Body.String())
+		}
+	})
+}
+
+func TestPatchAllowsDoneWhileUnlinkingTheBlockerInTheSameRequest(t *testing.T) {
+	st := newTestStore(t)
+	blocker := addTask(t, st, "the blocker", task.StatusTodo, task.PriorityMedium, nil)
+	tk := addTask(t, st, "the blocked task", task.StatusTodo, task.PriorityMedium, nil)
+	tk.Links = []task.Link{{Type: task.LinkBlockedBy, ID: blocker.ID}}
+	if err := st.Save(tk); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	h := newTestMux(t, st)
+
+	status := task.StatusDone
+	noLinks := []linkJSON{}
+	w := doJSON(t, h, http.MethodPatch, "/api/tasks/"+itoa(tk.ID), patchRequest{Status: &status, Links: &noLinks})
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 when the blocking link is cleared in the same request, body %s", w.Code, w.Body.String())
+	}
+}
+
 func TestPatchRejectsSelfLink(t *testing.T) {
 	st := newTestStore(t)
 	tk := addTask(t, st, "source", task.StatusTodo, task.PriorityMedium, nil)
