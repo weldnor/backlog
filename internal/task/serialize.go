@@ -114,6 +114,8 @@ func (t *Task) Bytes() []byte {
 			}
 		case "tags":
 			writeList(&b, 0, "tags", t.Tags)
+		case "links":
+			writeLinks(&b, t.Links)
 		case "metadata":
 			t.writeMetadata(&b)
 		}
@@ -188,6 +190,19 @@ func (t *Task) writeMetadata(b *bytes.Buffer) {
 	}
 	if t.Meta.Refs != nil {
 		writeList(b, 2, "refs", t.Meta.Refs)
+	}
+}
+
+// writeLinks renders the `links` list, one mapping per entry, in the order
+// the author wrote them.
+func writeLinks(b *bytes.Buffer, links []Link) {
+	if len(links) == 0 {
+		b.WriteString("links: []\n")
+		return
+	}
+	b.WriteString("links:\n")
+	for _, l := range links {
+		fmt.Fprintf(b, "  - type: %s\n    id: %d\n", scalar(l.Type), l.ID)
 	}
 }
 

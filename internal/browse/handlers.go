@@ -46,6 +46,45 @@ func derefSlice(s *[]string) []string {
 	return *s
 }
 
+func derefLinks(s *[]linkJSON) []linkJSON {
+	if s == nil {
+		return nil
+	}
+	return *s
+}
+
+// linkJSON is the JSON shape a create or patch request uses for one link,
+// mirroring taskview.LinkView.
+type linkJSON struct {
+	Type string `json:"type"`
+	ID   int    `json:"id"`
+}
+
+// toLinks converts request-supplied links to the internal model, rejecting
+// an unknown type or a non-positive id the same way applyPatch rejects an
+// empty ref.
+func toLinks(raw []linkJSON) ([]task.Link, error) {
+	out := make([]task.Link, 0, len(raw))
+	for _, l := range raw {
+		if !task.ValidLinkType(l.Type) {
+			return nil, fmt.Errorf("unknown link type %q, expected one of %s", l.Type, strings.Join(task.LinkTypes, ", "))
+		}
+		if l.ID <= 0 {
+			return nil, fmt.Errorf("link %s:%d is not a task identifier", l.Type, l.ID)
+		}
+		out = append(out, task.Link{Type: l.Type, ID: l.ID})
+	}
+	return task.NormalizeLinks(out), nil
+}
+
+func linkStrings(links []task.Link) string {
+	parts := make([]string, 0, len(links))
+	for _, l := range links {
+		parts = append(parts, fmt.Sprintf("%s:%d", l.Type, l.ID))
+	}
+	return strings.Join(parts, ",")
+}
+
 // newMux builds the server's routes: the JSON API under /api and the
 // embedded web UI everywhere else.
 func newMux(st *store.Store, opts Options) (*http.ServeMux, error) {
@@ -143,12 +182,13 @@ func handleDeleteTask(st *store.Store, opts Options) http.HandlerFunc {
 // createRequest is the JSON body POST /api/tasks accepts, mirroring the
 // fields `backlog add` accepts.
 type createRequest struct {
-	Title       string   `json:"title"`
-	Description string   `json:"description"`
-	Tags        []string `json:"tags"`
-	Priority    string   `json:"priority"`
-	Files       []string `json:"files"`
-	Refs        []string `json:"refs"`
+	Title       string     `json:"title"`
+	Description string     `json:"description"`
+	Tags        []string   `json:"tags"`
+	Priority    string     `json:"priority"`
+	Files       []string   `json:"files"`
+	Refs        []string   `json:"refs"`
+	Links       []linkJSON `json:"links"`
 }
 
 func handleCreateTask(st *store.Store, opts Options) http.HandlerFunc {
@@ -178,12 +218,18 @@ func handleCreateTask(st *store.Store, opts Options) http.HandlerFunc {
 				return
 			}
 		}
+		links, err := toLinks(req.Links)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
 
 		// Everything created through the UI is a human sitting at a browser,
 		// never an agent — see design.md's "Task creation always records
 		// author: human".
 		t := task.New(title, req.Description, req.Tags, req.Files, req.Refs,
 			task.AuthorHuman, priority, store.Provenance(st.Project), time.Now())
+		t.Links = links
 		if err := hooks.RunPre(hookDiag(opts), st.Root, st.Project, hooks.PreAdd, t, nil); err != nil {
 			writeError(w, http.StatusConflict, err.Error())
 			return
@@ -201,13 +247,14 @@ func handleCreateTask(st *store.Store, opts Options) http.HandlerFunc {
 // a pointer so the handler can tell "not supplied" (nil) apart from
 // "supplied as the zero value" (a non-nil pointer to "" or an empty slice).
 type patchRequest struct {
-	Title       *string   `json:"title"`
-	Description *string   `json:"description"`
-	Tags        *[]string `json:"tags"`
-	Priority    *string   `json:"priority"`
-	Status      *string   `json:"status"`
-	Reason      *string   `json:"reason"`
-	Refs        *[]string `json:"refs"`
+	Title       *string     `json:"title"`
+	Description *string     `json:"description"`
+	Tags        *[]string   `json:"tags"`
+	Priority    *string     `json:"priority"`
+	Status      *string     `json:"status"`
+	Reason      *string     `json:"reason"`
+	Refs        *[]string   `json:"refs"`
+	Links       *[]linkJSON `json:"links"`
 }
 
 func handlePatchTask(st *store.Store, opts Options) http.HandlerFunc {
@@ -243,11 +290,17 @@ func handlePatchTask(st *store.Store, opts Options) http.HandlerFunc {
 				return
 			}
 		}
-		if req.Title != nil || req.Description != nil || req.Tags != nil {
+		if req.Title != nil || req.Description != nil || req.Tags != nil || req.Links != nil {
+			newLinks, err := toLinks(derefLinks(req.Links))
+			if err != nil {
+				writeError(w, http.StatusBadRequest, err.Error())
+				return
+			}
 			if err := hooks.RunPre(hookDiag(opts), st.Root, st.Project, hooks.PreEdit, t, map[string]string{
 				"BACKLOG_NEW_TITLE":       deref(req.Title),
 				"BACKLOG_NEW_DESCRIPTION": deref(req.Description),
 				"BACKLOG_NEW_TAGS":        strings.Join(derefSlice(req.Tags), ","),
+				"BACKLOG_NEW_LINKS":       linkStrings(newLinks),
 			}); err != nil {
 				writeError(w, http.StatusConflict, err.Error())
 				return
@@ -272,7 +325,7 @@ func handlePatchTask(st *store.Store, opts Options) http.HandlerFunc {
 				"BACKLOG_PREVIOUS_PRIORITY": prevPriority,
 			})
 		}
-		if req.Title != nil || req.Description != nil || req.Tags != nil {
+		if req.Title != nil || req.Description != nil || req.Tags != nil || req.Links != nil {
 			hooks.Run(hookDiag(opts), st.Root, st.Project, hooks.PostEdit, t, nil)
 		}
 		writeJSON(w, taskview.View(t))
@@ -305,6 +358,19 @@ func applyPatch(t *task.Task, req patchRequest) error {
 				return errors.New("a reference may not be empty")
 			}
 		}
+	}
+	var newLinks []task.Link
+	if req.Links != nil {
+		links, err := toLinks(*req.Links)
+		if err != nil {
+			return err
+		}
+		for _, l := range links {
+			if l.ID == t.ID {
+				return fmt.Errorf("task %d cannot link to itself", t.ID)
+			}
+		}
+		newLinks = links
 	}
 
 	finalStatus := t.Status
@@ -353,6 +419,9 @@ func applyPatch(t *task.Task, req patchRequest) error {
 		refs := make([]string, 0, len(*req.Refs))
 		refs = append(refs, (*req.Refs)...)
 		t.Meta.Refs = refs
+	}
+	if req.Links != nil {
+		t.Links = newLinks
 	}
 	return nil
 }

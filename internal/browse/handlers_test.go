@@ -208,6 +208,32 @@ func TestCreateTaskFullContext(t *testing.T) {
 	}
 }
 
+func TestCreateTaskWithLinks(t *testing.T) {
+	st := newTestStore(t)
+	target := addTask(t, st, "target", task.StatusTodo, task.PriorityMedium, nil)
+	h := newTestMux(t, st)
+	req := createRequest{Title: "source", Links: []linkJSON{{Type: task.LinkBlocks, ID: target.ID}}}
+	w := doJSON(t, h, http.MethodPost, "/api/tasks", req)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("status = %d, body %s", w.Code, w.Body.String())
+	}
+	got := decodeBody[taskview.TaskView](t, w)
+	if len(got.Links) != 1 || got.Links[0].Type != task.LinkBlocks || got.Links[0].ID != target.ID {
+		t.Errorf("Links = %+v, want [{%s %d}]", got.Links, task.LinkBlocks, target.ID)
+	}
+}
+
+func TestCreateTaskRejectsUnknownLinkType(t *testing.T) {
+	st := newTestStore(t)
+	target := addTask(t, st, "target", task.StatusTodo, task.PriorityMedium, nil)
+	h := newTestMux(t, st)
+	req := createRequest{Title: "source", Links: []linkJSON{{Type: "blockd-by", ID: target.ID}}}
+	w := doJSON(t, h, http.MethodPost, "/api/tasks", req)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", w.Code)
+	}
+}
+
 func TestCreateTaskRejectsEmptyTitle(t *testing.T) {
 	st := newTestStore(t)
 	h := newTestMux(t, st)
@@ -279,6 +305,44 @@ func TestPatchDescriptionOnlyLeavesOtherFieldsUnchanged(t *testing.T) {
 	if got.Title != "keep me" || got.Status != task.StatusDoing || got.Priority != task.PriorityHigh ||
 		len(got.Tags) != 1 || got.Tags[0] != "bug" || got.Description != desc {
 		t.Errorf("patched task = %+v, only description should have changed", got)
+	}
+}
+
+func TestPatchSetsAndReplacesLinks(t *testing.T) {
+	st := newTestStore(t)
+	target := addTask(t, st, "target", task.StatusTodo, task.PriorityMedium, nil)
+	tk := addTask(t, st, "source", task.StatusTodo, task.PriorityMedium, nil)
+	h := newTestMux(t, st)
+
+	links := []linkJSON{{Type: task.LinkBlocks, ID: target.ID}}
+	w := doJSON(t, h, http.MethodPatch, "/api/tasks/"+itoa(tk.ID), patchRequest{Links: &links})
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, body %s", w.Code, w.Body.String())
+	}
+	got := decodeBody[taskview.TaskView](t, w)
+	if len(got.Links) != 1 || got.Links[0].Type != task.LinkBlocks {
+		t.Fatalf("Links = %+v, want [{%s %d}]", got.Links, task.LinkBlocks, target.ID)
+	}
+
+	// A second PATCH replaces the list rather than appending to it — the same
+	// full-replacement semantics tags use.
+	replacement := []linkJSON{{Type: task.LinkRelated, ID: target.ID}}
+	w2 := doJSON(t, h, http.MethodPatch, "/api/tasks/"+itoa(tk.ID), patchRequest{Links: &replacement})
+	got2 := decodeBody[taskview.TaskView](t, w2)
+	if len(got2.Links) != 1 || got2.Links[0].Type != task.LinkRelated {
+		t.Fatalf("Links = %+v, want the list replaced with [{related %d}]", got2.Links, target.ID)
+	}
+}
+
+func TestPatchRejectsSelfLink(t *testing.T) {
+	st := newTestStore(t)
+	tk := addTask(t, st, "source", task.StatusTodo, task.PriorityMedium, nil)
+	h := newTestMux(t, st)
+
+	links := []linkJSON{{Type: task.LinkRelated, ID: tk.ID}}
+	w := doJSON(t, h, http.MethodPatch, "/api/tasks/"+itoa(tk.ID), patchRequest{Links: &links})
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400 self-linking, body %s", w.Code, w.Body.String())
 	}
 }
 

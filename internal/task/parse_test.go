@@ -14,6 +14,7 @@ priority: high
 tags:
   - bug
   - concurrency
+links: []
 metadata:
   schema: 1
   created: 2026-08-30T20:59:51Z
@@ -89,6 +90,7 @@ title: A bare task
 status: doing
 priority: medium
 tags: []
+links: []
 metadata:
   schema: 1
   created: 2026-08-30T20:59:51Z
@@ -102,6 +104,7 @@ title: No description at all
 status: done
 priority: low
 tags: []
+links: []
 metadata:
   schema: 1
   created: 2026-08-30T20:59:51Z
@@ -115,6 +118,25 @@ title: 'Кириллический заголовок: проверка'
 status: todo
 priority: medium
 tags: []
+links: []
+metadata:
+  schema: 1
+  created: 2026-08-30T20:59:51Z
+  author: agent
+  refs: []
+---
+`,
+		"with links": `---
+id: 6
+title: Depends on the migration
+status: todo
+priority: medium
+tags: []
+links:
+  - type: blocked-by
+    id: 2
+  - type: related
+    id: 9
 metadata:
   schema: 1
   created: 2026-08-30T20:59:51Z
@@ -273,6 +295,72 @@ func TestParseDeduplicatesTagsOnRead(t *testing.T) {
 	got := parseOK(t, "001-x.md", "---\nid: 1\ntitle: x\nstatus: todo\ntags:\n  - bug\n  - bug\n  - flake\n---\n")
 	if strings.Join(got.Tags, ",") != "bug,flake" {
 		t.Errorf("Tags = %v, want the duplicate dropped", got.Tags)
+	}
+}
+
+func TestParseReadsLinks(t *testing.T) {
+	got := parseOK(t, "001-x.md",
+		"---\nid: 1\ntitle: x\nstatus: todo\nlinks:\n  - type: blocks\n    id: 2\n  - type: related\n    id: 3\n---\n")
+	want := []Link{{Type: LinkBlocks, ID: 2}, {Type: LinkRelated, ID: 3}}
+	if len(got.Links) != len(want) || got.Links[0] != want[0] || got.Links[1] != want[1] {
+		t.Errorf("Links = %+v, want %+v", got.Links, want)
+	}
+	if countSeverity(got, SeverityError) != 0 {
+		t.Errorf("valid links produced errors: %v", got.Issues)
+	}
+}
+
+func TestParseLinkToleranceCases(t *testing.T) {
+	cases := []struct {
+		name     string
+		links    string
+		severity Severity
+		contains string
+	}{
+		{
+			name:     "unknown link type",
+			links:    "links:\n  - type: blockd-by\n    id: 2\n",
+			severity: SeverityError,
+			contains: "did you mean blocked-by?",
+		},
+		{
+			name:     "unknown link type with no near miss",
+			links:    "links:\n  - type: banana\n    id: 2\n",
+			severity: SeverityError,
+			contains: "expected one of",
+		},
+		{
+			name:     "missing id",
+			links:    "links:\n  - type: related\n",
+			severity: SeverityError,
+			contains: "has an id that is not a positive integer",
+		},
+		{
+			name:     "non-positive id",
+			links:    "links:\n  - type: related\n    id: 0\n",
+			severity: SeverityError,
+			contains: "non-positive id",
+		},
+		{
+			name:     "links to itself",
+			links:    "links:\n  - type: related\n    id: 1\n",
+			severity: SeverityError,
+			contains: "links to itself",
+		},
+		{
+			name:     "duplicate link",
+			links:    "links:\n  - type: related\n    id: 2\n  - type: related\n    id: 2\n",
+			severity: SeverityWarning,
+			contains: "more than once",
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got := parseOK(t, "001-x.md", "---\nid: 1\ntitle: x\nstatus: todo\n"+c.links+"---\n")
+			if !hasIssue(got, c.severity, c.contains) {
+				t.Errorf("expected a %s containing %q, got %v", c.severity, c.contains, got.Issues)
+			}
+		})
 	}
 }
 

@@ -58,6 +58,7 @@ func Parse(name string, data []byte) (*Task, error) {
 	t.readReason(root)
 	t.checkReasonPairing()
 	t.readTags(root)
+	t.readLinks(root)
 	t.readMetadata(root)
 	t.notePreservedKeys(root)
 
@@ -261,6 +262,88 @@ func (t *Task) readTags(root *yaml.Node) {
 		}
 		seen[item.Value] = true
 		t.Tags = append(t.Tags, item.Value)
+	}
+}
+
+// readLinks reads the `links` list: a sequence of {type, id} mappings. A
+// malformed entry is reported and skipped rather than failing the whole
+// file, the same tolerance every other field gets. Whether a linked id
+// actually exists is a cross-file question `backlog validate` answers, not
+// something a single file's parse can know.
+func (t *Task) readLinks(root *yaml.Node) {
+	n, ok := mapGet(root, "links")
+	if !ok {
+		return
+	}
+	if n.Kind == yaml.ScalarNode && n.Tag == "!!null" {
+		return
+	}
+	if n.Kind != yaml.SequenceNode {
+		t.issue(SeverityError, false, "links must be a list")
+		return
+	}
+	seen := map[Link]bool{}
+	for _, item := range n.Content {
+		if item.Kind != yaml.MappingNode {
+			t.issue(SeverityError, false, "links entries must be a mapping of type and id")
+			continue
+		}
+		var (
+			typ      string
+			hasType  bool
+			id       int
+			hasID    bool
+			idScalar string
+		)
+		for i := 0; i+1 < len(item.Content); i += 2 {
+			key := item.Content[i].Value
+			val := item.Content[i+1]
+			switch key {
+			case "type":
+				typ = val.Value
+				hasType = true
+			case "id":
+				idScalar = val.Value
+				v, err := strconv.Atoi(val.Value)
+				if err == nil {
+					id = v
+					hasID = true
+				}
+			default:
+				t.issue(SeverityError, false, "links.%s is not a permitted key, expected type or id", key)
+			}
+		}
+		if !hasType || strings.TrimSpace(typ) == "" {
+			t.issue(SeverityError, false, "a links entry is missing type")
+			continue
+		}
+		if !hasID {
+			t.issue(SeverityError, false, "links entry %q has an id that is not a positive integer, found %q", typ, idScalar)
+			continue
+		}
+		if !ValidLinkType(typ) {
+			msg := fmt.Sprintf("links entry has type %q, expected one of %s", typ, strings.Join(LinkTypes, ", "))
+			if s, ok := nearest(typ, LinkTypes); ok {
+				msg += fmt.Sprintf("; did you mean %s?", s)
+			}
+			t.issue(SeverityError, false, "%s", msg)
+			continue
+		}
+		if id == t.ID && t.ID > 0 {
+			t.issue(SeverityError, false, "links to itself (%s:%d)", typ, id)
+			continue
+		}
+		if id <= 0 {
+			t.issue(SeverityError, false, "links entry %q has a non-positive id %d", typ, id)
+			continue
+		}
+		l := Link{Type: typ, ID: id}
+		if seen[l] {
+			t.issue(SeverityWarning, true, "links lists %s:%d more than once", typ, id)
+			continue
+		}
+		seen[l] = true
+		t.Links = append(t.Links, l)
 	}
 }
 

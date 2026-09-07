@@ -22,6 +22,18 @@ func (e *editTags) Set(v string) error {
 	return e.stringList.Set(v)
 }
 
+// editLinks is editTags's counterpart for --link: links, like tags, are
+// edited by full replacement.
+type editLinks struct {
+	stringList
+	touched bool
+}
+
+func (e *editLinks) Set(v string) error {
+	e.touched = true
+	return e.stringList.Set(v)
+}
+
 // runEdit changes a task's title, description or tags — the fields `set`
 // deliberately does not reach, because they are prose and content rather than
 // workflow state. Before this command they could only be edited through
@@ -34,8 +46,10 @@ func runEdit(env Env, args []string) error {
 		description = fs.String("description", "", "the new description (markdown body)")
 		asJSON      = fs.Bool("json", false, "print the updated task as JSON")
 		tags        editTags
+		links       editLinks
 	)
 	fs.Var(&tags, "tag", "a tag to attach; repeatable, replaces the entire existing tag list")
+	fs.Var(&links, "link", "a link to another task, type:id; repeatable, replaces the entire existing link list; types: "+strings.Join(task.LinkTypes, ", "))
 	if err := parseFlags(fs, args); err != nil {
 		return err
 	}
@@ -43,11 +57,19 @@ func runEdit(env Env, args []string) error {
 	if err != nil {
 		return err
 	}
-	if *title == "" && *description == "" && !tags.touched {
-		return usagef("nothing to edit: supply --title, --description, --tag, or any combination")
+	if *title == "" && *description == "" && !tags.touched && !links.touched {
+		return usagef("nothing to edit: supply --title, --description, --tag, --link, or any combination")
 	}
 	if *title != "" && strings.TrimSpace(*title) == "" {
 		return usagef("title must not be empty")
+	}
+	var newLinks []task.Link
+	if links.touched {
+		parsed, err := parseLinks(links.stringList)
+		if err != nil {
+			return err
+		}
+		newLinks = task.NormalizeLinks(parsed)
 	}
 
 	st, err := openStore(env)
@@ -57,6 +79,11 @@ func runEdit(env Env, args []string) error {
 	t, err := st.Find(id)
 	if err != nil {
 		return err
+	}
+	for _, l := range newLinks {
+		if l.ID == t.ID {
+			return usagef("task %d cannot link to itself", t.ID)
+		}
 	}
 
 	newTags := t.Tags
@@ -68,6 +95,7 @@ func runEdit(env Env, args []string) error {
 		"BACKLOG_NEW_TITLE":       *title,
 		"BACKLOG_NEW_DESCRIPTION": *description,
 		"BACKLOG_NEW_TAGS":        strings.Join(newTags, ","),
+		"BACKLOG_NEW_LINKS":       strings.Join(linkStrings(newLinks), ","),
 	}); err != nil {
 		return err
 	}
@@ -80,6 +108,9 @@ func runEdit(env Env, args []string) error {
 	}
 	if tags.touched {
 		t.Tags = newTags
+	}
+	if links.touched {
+		t.Links = newLinks
 	}
 	if err := st.Save(t); err != nil {
 		return err
