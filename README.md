@@ -84,6 +84,7 @@ backlog add "HTTP 500 on login" \
 | `--ref` | a free-form link to external work; repeatable |
 | `--link` | a typed link to another task, `type:id`; repeatable — see `backlog link` |
 | `--author` | `agent` (default) or `human` |
+| `--assignee` | who the task is assigned to — see `backlog assign` |
 
 The current git branch and commit are recorded automatically, and are simply
 left out when the project is not a git repository.
@@ -110,13 +111,14 @@ backlog list done
 backlog list declined
 backlog list done --tag bug      # repeatable; all given tags must match
 backlog list --priority high     # repeatable; any given priority matches
+backlog list --assignee alice    # matched case-insensitively
 backlog list --json
 ```
 
-The `--tag` and `--priority` filters apply equally to the bare command and to
-each subcommand. Tasks are ordered by descending priority, then by ascending
-identifier. The human output keeps that order within each status group;
-`--json` is the same single sequence, ungrouped.
+The `--tag`, `--priority` and `--assignee` filters apply equally to the bare
+command and to each subcommand. Tasks are ordered by descending priority,
+then by ascending identifier. The human output keeps that order within each
+status group; `--json` is the same single sequence, ungrouped.
 
 An empty result is an answer, not a failure: it exits zero.
 
@@ -226,6 +228,27 @@ restating every existing one is what `backlog link add` is for. A title
 change renames the file the same way `set` never does, since `set` never
 touches the title.
 
+### `backlog assign`
+
+Changes who a task is assigned to. Unlike `set` and `edit`, it is its own
+command rather than a flag on either, because assignment is neither workflow
+state (status, priority) nor prose content (title, description, tags) — it
+is who is doing the work — and it fires its own `pre-assign` / `post-assign`
+hooks so a project can wire up a notification without also catching every
+status or content change.
+
+```
+backlog assign 1 alice
+backlog assign 1 --clear
+```
+
+An assignee is free text — most often a handle or a name — with no closed
+set of permitted values: who is available to work a backlog is a fact about
+the team, not something the tool can enumerate. Unlike a decline reason, an
+assignee is not tied to status: a task stays assigned through `done` or
+`declined` as a record of who did the work, and `list --assignee` (matched
+case-insensitively) finds it there too.
+
 ### `backlog link`
 
 Adds or removes one typed link from a task to another, incrementally — unlike
@@ -327,11 +350,12 @@ prose to delete, which no tool can decide.
 ### `backlog browse`
 
 Starts a local web UI for the backlog: a list and a board view, filters by
-status/priority/tag and a free-text search, a detail dialog for reading and
-editing a task, and a form for creating one. The read view shows a task's
-links as clickable chips that open the linked task. Title, description, tags
-and links can also be edited from the terminal with `backlog edit`; `set`
-still only reaches status, priority, the decline reason and references.
+status/priority/tag/assignee and a free-text search, a detail dialog for
+reading and editing a task, and a form for creating one. The read view shows
+a task's links as clickable chips that open the linked task. Title,
+description, tags, assignee and links can also be edited from the terminal
+with `backlog edit` and `backlog assign`; `set` still only reaches status,
+priority, the decline reason and references.
 
 Unlike `backlog list`, the UI shows tasks in every status by default — `done`
 and `declined` included — so the whole backlog is visible at a glance; the
@@ -423,9 +447,9 @@ The frontmatter is split by one question: **would a person edit this field on
 purpose?**
 
 - **Top level — author-owned.** `id`, `title`, `status`, `priority`, `reason`,
-  `tags`, `links`. Safe to edit by hand. A field the CLI does not recognise is
-  preserved on write and reported only as a warning, leaving room to
-  experiment.
+  `assignee`, `tags`, `links`. Safe to edit by hand. A field the CLI does not
+  recognise is preserved on write and reported only as a warning, leaving
+  room to experiment.
 - **`metadata` — tool-owned.** `schema`, `created`, `author`, `source`, `refs`.
   The key set is **closed**: an unrecognised key is an error, which is what
   catches a typo like `creted`.
@@ -449,6 +473,14 @@ reason on a task in any other status. Neither is repairable — one needs prose
 written and the other needs prose deleted, and both are judgements. Reopening a
 declined task removes the field, because it describes a state the task is no
 longer in and git already keeps what it said.
+
+`assignee` is free text naming who is doing the task — most often a handle or
+a name — with no closed set of permitted values, unlike `status` or
+`priority`: who is available to work a backlog is a fact about the team, not
+something the tool can enumerate. It is omitted from the file entirely when
+the task is unassigned, and unlike `reason` it carries no status pairing: a
+task stays assigned through `done` or `declined` as a record of who did the
+work. Change it with `backlog assign` or from `browse`.
 
 The body is the description, and is preserved verbatim by any write that does
 not change it.
@@ -493,6 +525,7 @@ There are two kinds, one pair per mutating command:
 | `pre-add` / `post-add` | before / after `backlog add` creates a task | pre- can |
 | `pre-set` / `post-set` | before / after `backlog set` changes status, priority, reason or refs | pre- can |
 | `pre-edit` / `post-edit` | before / after `backlog edit` or `backlog tag` changes title, description or tags | pre- can |
+| `pre-assign` / `post-assign` | before / after `backlog assign` changes who a task is assigned to | pre- can |
 | `pre-rm` / `post-rm` | before / after `backlog rm` deletes a task | pre- can |
 
 A **post-** hook is a side effect, not a gate: it observes a change that
@@ -522,6 +555,7 @@ BACKLOG_TASK_ID
 BACKLOG_TASK_TITLE
 BACKLOG_TASK_STATUS
 BACKLOG_TASK_PRIORITY
+BACKLOG_TASK_ASSIGNEE
 BACKLOG_TASK_TAGS           comma-joined
 BACKLOG_TASK_FILE           the task's file path
 ```
@@ -537,7 +571,9 @@ task as it currently is (`BACKLOG_TASK_STATUS`, ...) alongside what is being
 proposed (`BACKLOG_NEW_STATUS`, ...), so it can decide from both. `pre-edit`
 carries `BACKLOG_NEW_TITLE` / `BACKLOG_NEW_DESCRIPTION` / `BACKLOG_NEW_TAGS`
 the same way, current state in `BACKLOG_TASK_*`, the proposed one in
-`BACKLOG_NEW_*`.
+`BACKLOG_NEW_*`. `pre-assign` and `post-assign` carry `BACKLOG_NEW_ASSIGNEE`
+and `BACKLOG_PREVIOUS_ASSIGNEE` respectively, the same pattern as `pre-set` /
+`post-set`.
 
 A pre-hook that refuses a change, for example, might reject deleting anything
 still referenced elsewhere, or reject a status change that skips a status

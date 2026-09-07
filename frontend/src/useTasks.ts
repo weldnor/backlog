@@ -6,12 +6,13 @@ export interface VisibleFilter {
   status: string | null;
   priority: string | null;
   tag: string | null;
+  assignee: string | null;
 }
 
 // visibleParams builds the query for the filtered fetch. Unlike `backlog list`,
 // the UI shows every status by default, so it always asks for ?all=1 — an
-// explicit status filter replaces that with a single-status request. Priority
-// and tag narrow further.
+// explicit status filter replaces that with a single-status request. Priority,
+// tag and assignee narrow further.
 function visibleParams(f: VisibleFilter): URLSearchParams {
   const p = new URLSearchParams();
   if (f.status) {
@@ -21,6 +22,7 @@ function visibleParams(f: VisibleFilter): URLSearchParams {
   }
   if (f.priority) p.set("priority", f.priority);
   if (f.tag) p.set("tag", f.tag);
+  if (f.assignee) p.set("assignee", f.assignee);
   return p;
 }
 

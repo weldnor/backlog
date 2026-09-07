@@ -46,6 +46,9 @@ const (
 	PreEdit  = "pre-edit"  // before `backlog edit` or `backlog tag` changes title, description or tags
 	PostEdit = "post-edit" // after `backlog edit` or `backlog tag` changes title, description or tags
 
+	PreAssign  = "pre-assign"  // before `backlog assign` changes who a task is assigned to
+	PostAssign = "post-assign" // after `backlog assign` changes who a task is assigned to
+
 	PreRemove  = "pre-rm"  // before `backlog rm` deletes a task
 	PostRemove = "post-rm" // after `backlog rm` deletes a task
 )
@@ -144,6 +147,7 @@ func envFor(root, project, event string, t *task.Task, extra map[string]string) 
 			"BACKLOG_TASK_TITLE="+t.Title,
 			"BACKLOG_TASK_STATUS="+t.Status,
 			"BACKLOG_TASK_PRIORITY="+t.Priority,
+			"BACKLOG_TASK_ASSIGNEE="+t.Assignee,
 			"BACKLOG_TASK_TAGS="+strings.Join(t.Tags, ","),
 			"BACKLOG_TASK_FILE="+t.Path,
 		)

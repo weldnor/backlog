@@ -19,6 +19,7 @@ func runAdd(env Env, args []string) error {
 		description = fs.String("description", "", "the task description")
 		author      = fs.String("author", task.AuthorAgent, "who recorded this task: agent or human")
 		priority    = fs.String("priority", task.DefaultPriority, "how severe the finding is: high, medium or low")
+		assignee    = fs.String("assignee", "", "who the task is assigned to")
 		asJSON      = fs.Bool("json", false, "print the created task as JSON")
 		tags        stringList
 		files       stringList
@@ -60,6 +61,7 @@ func runAdd(env Env, args []string) error {
 
 	t := task.New(text, *description, tags, files, refs, *author, *priority, store.Provenance(st.Project), time.Now())
 	t.Links = task.NormalizeLinks(links)
+	t.Assignee = strings.TrimSpace(*assignee)
 	// t has no id or file yet: those are claimed atomically as part of the
 	// write itself, so a pre-add hook necessarily runs before either exists.
 	if err := hooks.RunPre(env.Stderr, st.Root, st.Project, hooks.PreAdd, t, nil); err != nil {
@@ -83,6 +85,7 @@ func runList(env Env, args []string) error {
 	var sc scope
 	sc.register(fs)
 	sc.registerPriority(fs)
+	sc.registerAssignee(fs)
 
 	for _, a := range args {
 		if a == "-h" || a == "--help" {
@@ -173,6 +176,9 @@ func writeTaskDetail(env Env, t *task.Task) {
 	// Only a declined task has one, and the line would be noise on every other.
 	if t.Reason != "" {
 		fmt.Fprintf(w, "reason   %s\n", t.Reason)
+	}
+	if t.Assignee != "" {
+		fmt.Fprintf(w, "assignee %s\n", t.Assignee)
 	}
 	if len(t.Tags) > 0 {
 		fmt.Fprintf(w, "tags     %s\n", strings.Join(t.Tags, ", "))

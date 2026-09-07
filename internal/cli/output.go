@@ -86,6 +86,9 @@ func writeTaskLines(w io.Writer, tasks []*task.Task) {
 
 func taskLine(t *task.Task) string {
 	line := fmt.Sprintf("%03d  %-6s  %s", t.ID, t.Priority, t.Title)
+	if t.Assignee != "" {
+		line += "  @" + t.Assignee
+	}
 	if len(t.Tags) > 0 {
 		line += "  [" + strings.Join(t.Tags, ", ") + "]"
 	}

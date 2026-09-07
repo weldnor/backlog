@@ -112,6 +112,12 @@ func (t *Task) Bytes() []byte {
 			if t.Reason != "" {
 				fmt.Fprintf(&b, "reason: %s\n", scalar(t.Reason))
 			}
+		case "assignee":
+			// Written only when there is one, so an unassigned task carries no
+			// empty key.
+			if t.Assignee != "" {
+				fmt.Fprintf(&b, "assignee: %s\n", scalar(t.Assignee))
+			}
 		case "tags":
 			writeList(&b, 0, "tags", t.Tags)
 		case "links":

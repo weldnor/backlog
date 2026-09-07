@@ -700,3 +700,104 @@ func TestUnrelatedWritePreservesReason(t *testing.T) {
 		t.Errorf("the priority change was not written:\n%s", out)
 	}
 }
+
+// assignee is a field the CLI understands, so it must never be reported the
+// way an unrecognised key is.
+func TestParseTreatsAssigneeAsAKnownField(t *testing.T) {
+	got := parseOK(t, "001-x.md", "---\nid: 1\ntitle: x\nstatus: todo\npriority: high\nassignee: alice\ntags: []\n---\n")
+	if got.Assignee != "alice" {
+		t.Errorf("Assignee = %q", got.Assignee)
+	}
+	if hasIssue(got, SeverityWarning, "not a field the CLI understands") {
+		t.Errorf("assignee was reported as an unrecognised field: %v", got.Issues)
+	}
+	if countSeverity(got, SeverityError) != 0 {
+		t.Errorf("a valid assignee produced errors: %v", got.Issues)
+	}
+}
+
+// Unlike reason, assignee has no status it must pair with: a task can be
+// assigned in any status, including done or declined, as a record of who did
+// the work.
+func TestParseAssigneeHasNoStatusPairing(t *testing.T) {
+	for _, status := range Statuses {
+		fragment := "reason: because\n"
+		if status != StatusDeclined {
+			fragment = ""
+		}
+		content := fmt.Sprintf("---\nid: 1\ntitle: x\nstatus: %s\npriority: high\nassignee: alice\n%stags: []\n---\n", status, fragment)
+		got := parseOK(t, "001-x.md", content)
+		if got.Assignee != "alice" {
+			t.Errorf("status %s: Assignee = %q", status, got.Assignee)
+		}
+	}
+}
+
+func TestParseAssigneeValueCases(t *testing.T) {
+	const shell = "---\nid: 1\ntitle: x\nstatus: todo\n%stags: []\n---\n"
+	cases := []struct {
+		name     string
+		fragment string
+		want     string
+		contains string
+	}{
+		{
+			name:     "a string is stored verbatim",
+			fragment: "assignee: alice\n",
+			want:     "alice",
+		},
+		{
+			name:     "a missing assignee is unassigned",
+			fragment: "",
+			want:     "",
+		},
+		{
+			name:     "a list is not an assignee",
+			fragment: "assignee:\n  - alice\n",
+			contains: "assignee must be a string",
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got := parseOK(t, "001-x.md", fmt.Sprintf(shell, c.fragment))
+			if got.Assignee != c.want {
+				t.Errorf("Assignee = %q, want %q", got.Assignee, c.want)
+			}
+			if c.contains == "" {
+				if countSeverity(got, SeverityError) != 0 {
+					t.Errorf("a valid assignee produced errors: %v", got.Issues)
+				}
+				return
+			}
+			if !hasIssue(got, SeverityError, c.contains) {
+				t.Errorf("expected an error containing %q, got %v", c.contains, got.Issues)
+			}
+		})
+	}
+}
+
+func TestAssigneeRoundTripsAndOmitsWhenEmpty(t *testing.T) {
+	assigned := parseOK(t, "001-x.md", "---\nid: 1\ntitle: x\nstatus: todo\npriority: high\nassignee: alice\ntags: []\n---\n")
+	out := string(assigned.Bytes())
+	if !strings.Contains(out, "assignee: alice\n") {
+		t.Errorf("assignee was not written back:\n%s", out)
+	}
+
+	unassigned := parseOK(t, "001-x.md", "---\nid: 1\ntitle: x\nstatus: todo\npriority: high\ntags: []\n---\n")
+	out = string(unassigned.Bytes())
+	if strings.Contains(out, "assignee") {
+		t.Errorf("an unassigned task gained an assignee key:\n%s", out)
+	}
+}
+
+func TestUnrelatedWritePreservesAssignee(t *testing.T) {
+	got := parseOK(t, "001-x.md", "---\nid: 1\ntitle: x\nstatus: todo\npriority: low\nassignee: alice\ntags: []\n---\n")
+	got.Priority = PriorityHigh
+	out := string(got.Bytes())
+	if !strings.Contains(out, "assignee: alice\n") {
+		t.Errorf("a priority change lost the assignee:\n%s", out)
+	}
+	if !strings.Contains(out, "priority: high\n") {
+		t.Errorf("the priority change was not written:\n%s", out)
+	}
+}

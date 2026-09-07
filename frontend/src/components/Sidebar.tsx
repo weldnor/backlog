@@ -1,13 +1,14 @@
 import type { TaskView } from "../api";
 import { PRI_ORDER, STATUS_ORDER } from "../constants";
 
-type FilterKey = "status" | "priority" | "tag";
+type FilterKey = "status" | "priority" | "tag" | "assignee";
 
 interface SidebarProps {
   all: TaskView[];
   status: string | null;
   priority: string | null;
   tag: string | null;
+  assignee: string | null;
   onPick: (key: FilterKey, value: string) => void;
 }
 
@@ -21,7 +22,7 @@ function countBy(tasks: TaskView[], pick: (t: TaskView) => string, keys: readonl
   return counts;
 }
 
-export function Sidebar({ all, status, priority, tag, onPick }: SidebarProps) {
+export function Sidebar({ all, status, priority, tag, assignee, onPick }: SidebarProps) {
   const statusCounts = countBy(all, (t) => t.status, STATUS_ORDER);
   const priCounts = countBy(all, (t) => t.priority, PRI_ORDER);
 
@@ -32,6 +33,12 @@ export function Sidebar({ all, status, priority, tag, onPick }: SidebarProps) {
     }),
   );
   tagSet.sort();
+
+  const assigneeSet: string[] = [];
+  all.forEach((t) => {
+    if (t.assignee && !assigneeSet.includes(t.assignee)) assigneeSet.push(t.assignee);
+  });
+  assigneeSet.sort((a, b) => a.localeCompare(b));
 
   return (
     <aside className="sidebar">
@@ -86,6 +93,26 @@ export function Sidebar({ all, status, priority, tag, onPick }: SidebarProps) {
           })}
         </div>
       </div>
+
+      {assigneeSet.length > 0 ? (
+        <div className="side-group">
+          <div className="side-heading">Assignee</div>
+          <div className="tag-cloud">
+            {assigneeSet.map((a) => {
+              const value = a.toLowerCase();
+              return (
+                <button
+                  key={a}
+                  className={"tag-chip" + (assignee === value ? " is-active" : "")}
+                  onClick={() => onPick("assignee", value)}
+                >
+                  {a}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
     </aside>
   );
 }

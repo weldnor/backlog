@@ -231,7 +231,7 @@ func NormalizeLinks(links []Link) []Link {
 // TopLevelKeys are the frontmatter keys the CLI understands. Unlike the
 // metadata block the top level is author-owned, so a key outside this set is
 // preserved and reported only as a warning.
-var TopLevelKeys = []string{"id", "title", "status", "priority", "reason", "tags", "links", "metadata"}
+var TopLevelKeys = []string{"id", "title", "status", "priority", "reason", "assignee", "tags", "links", "metadata"}
 
 // Task is one backlog entry.
 type Task struct {
@@ -244,7 +244,12 @@ type Task struct {
 	// the field exists to prevent, and a reason on a live task describes a
 	// state the task is no longer in.
 	Reason string
-	Tags   []string
+	// Assignee names who is doing the task: free text, most often a person's
+	// handle. Empty means unassigned. Unlike Status or Priority it carries no
+	// closed set of permitted values — who is available to work a backlog is
+	// a fact about the team, not something the tool can enumerate.
+	Assignee string
+	Tags     []string
 	// Links are typed references to other tasks in the same backlog — see
 	// Link. Author-owned like Tags: a decision someone made, not something
 	// the tool infers.

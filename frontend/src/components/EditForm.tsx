@@ -13,6 +13,7 @@ interface Draft {
   links: LinkView[];
   body: string;
   reason: string;
+  assignee: string;
   files: string;
   refs: string;
 }
@@ -27,6 +28,7 @@ function draftFor(task?: TaskView): Draft {
       links: [],
       body: "",
       reason: "",
+      assignee: "",
       files: "",
       refs: "",
     };
@@ -39,6 +41,7 @@ function draftFor(task?: TaskView): Draft {
     links: task.links,
     body: task.description,
     reason: task.reason || "",
+    assignee: task.assignee || "",
     files: "",
     refs: "",
   };
@@ -90,6 +93,7 @@ export function EditForm({
         description: draft.body,
         tags: splitList(draft.tags),
         priority: draft.priority,
+        assignee: draft.assignee.trim(),
         files: splitList(draft.files),
         refs: splitList(draft.refs),
         links: draft.links,
@@ -102,6 +106,7 @@ export function EditForm({
         priority: draft.priority,
         status: draft.status,
         reason: draft.status === "declined" ? draft.reason : "",
+        assignee: draft.assignee.trim(),
         links: draft.links,
       });
     }
@@ -156,14 +161,26 @@ export function EditForm({
         </div>
       </div>
 
-      <div className="field" style={{ marginBottom: 16 }}>
-        <label>Tags — comma separated</label>
-        <input
-          className="input"
-          value={draft.tags}
-          onChange={(e) => set("tags", e.target.value)}
-          style={{ fontFamily: "var(--font-mono)", fontSize: 13 }}
-        />
+      <div className="edit-row">
+        <div className="field">
+          <label>Tags — comma separated</label>
+          <input
+            className="input"
+            value={draft.tags}
+            onChange={(e) => set("tags", e.target.value)}
+            style={{ fontFamily: "var(--font-mono)", fontSize: 13 }}
+          />
+        </div>
+        <div className="field">
+          <label>Assignee</label>
+          <input
+            className="input"
+            value={draft.assignee}
+            onChange={(e) => set("assignee", e.target.value)}
+            placeholder="unassigned"
+            style={{ fontFamily: "var(--font-mono)", fontSize: 13 }}
+          />
+        </div>
       </div>
 
       <LinksEditor

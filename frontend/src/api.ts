@@ -33,6 +33,7 @@ export interface TaskView {
   status: string;
   priority: string;
   reason: string;
+  assignee: string;
   tags: string[];
   links: LinkView[];
   description: string;
@@ -51,6 +52,7 @@ export interface CreateTaskBody {
   description: string;
   tags: string[];
   priority: string;
+  assignee: string;
   files: string[];
   refs: string[];
   links: LinkView[];
@@ -63,6 +65,7 @@ export interface PatchTaskBody {
   priority?: string;
   status?: string;
   reason?: string;
+  assignee?: string;
   refs?: string[];
   links?: LinkView[];
 }

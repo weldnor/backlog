@@ -21,6 +21,7 @@ type TaskView struct {
 	Status      string     `json:"status"`
 	Priority    string     `json:"priority"`
 	Reason      string     `json:"reason"`
+	Assignee    string     `json:"assignee"`
 	Tags        []string   `json:"tags"`
 	Links       []LinkView `json:"links"`
 	Description string     `json:"description"`
@@ -60,6 +61,7 @@ func View(t *task.Task) TaskView {
 		// Always present, empty for a task that is not declined, so the shape
 		// of the JSON does not vary with status.
 		Reason:      t.Reason,
+		Assignee:    t.Assignee,
 		Tags:        nonNil(t.Tags),
 		Links:       linkViews(t.Links),
 		Description: strings.TrimRight(t.Body, "\n"),
