@@ -18,6 +18,7 @@ function task(over: Partial<TaskView> & { id: number; title: string }): TaskView
     priority: "medium",
     reason: "",
     tags: [],
+    links: [],
     description: "",
     file: `00${over.id}-x.md`,
     metadata: {
@@ -285,6 +286,24 @@ describe("App", () => {
     await new Promise((r) => setTimeout(r, 0));
     expect(screen.getByRole("dialog")).toBeInTheDocument();
     expect(within(listView()).getByText("Alpha bug")).toBeInTheDocument();
+  });
+
+  it("shows a task's links and jumps to the target when a chip is clicked", async () => {
+    tasksState[0].links = [{ type: "blocks", id: 2 }];
+    const user = userEvent.setup();
+    render(<App />);
+
+    const row = await within(listView()).findByText("Alpha bug");
+    await user.click(row.closest("tr") as HTMLTableRowElement);
+    const dialog = await screen.findByRole("dialog");
+    const chip = within(dialog).getByRole("button", { name: /blocks.*002/ });
+    expect(chip).toBeInTheDocument();
+
+    await user.click(chip);
+
+    expect(
+      within(await screen.findByRole("dialog")).getByRole("heading", { name: "Beta chore" }),
+    ).toBeInTheDocument();
   });
 
   it("offers a Delete action in both the read and the edit view", async () => {

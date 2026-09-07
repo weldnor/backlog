@@ -19,6 +19,14 @@ export interface MetaView {
   refs: string[];
 }
 
+// LinkView is a typed reference to another task in the same backlog — see
+// internal/task's Link. Recorded on one side only: this task's list, never
+// mirrored automatically onto the target's.
+export interface LinkView {
+  type: string;
+  id: number;
+}
+
 export interface TaskView {
   id: number;
   title: string;
@@ -26,6 +34,7 @@ export interface TaskView {
   priority: string;
   reason: string;
   tags: string[];
+  links: LinkView[];
   description: string;
   metadata: MetaView;
   file: string;
@@ -44,6 +53,7 @@ export interface CreateTaskBody {
   priority: string;
   files: string[];
   refs: string[];
+  links: LinkView[];
 }
 
 export interface PatchTaskBody {
@@ -54,6 +64,7 @@ export interface PatchTaskBody {
   status?: string;
   reason?: string;
   refs?: string[];
+  links?: LinkView[];
 }
 
 export class ApiError extends Error {

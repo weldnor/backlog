@@ -1,8 +1,15 @@
 import type { TaskView } from "../api";
-import { priBadge, statusMeta } from "../constants";
+import { padId, priBadge, statusMeta } from "../constants";
 import { md } from "../markdown";
 
-export function ReadView({ task }: { task: TaskView }) {
+interface ReadViewProps {
+  task: TaskView;
+  // Opens another task's dialog when its link chip is clicked. Optional so a
+  // caller with nowhere to navigate to can simply omit it.
+  onOpenLink?: (id: number) => void;
+}
+
+export function ReadView({ task, onOpenLink }: ReadViewProps) {
   const p = priBadge(task);
   const st = statusMeta(task);
 
@@ -22,6 +29,23 @@ export function ReadView({ task }: { task: TaskView }) {
         <div className="decline-callout">
           <div className="heading">DECLINE REASON — REQUIRED, AUDITABLE</div>
           <div className="text">{task.reason}</div>
+        </div>
+      ) : null}
+      {task.links.length > 0 ? (
+        <div className="links-block">
+          <div className="heading">LINKS — RECORDED HERE ONLY, NOT MIRRORED BACK</div>
+          <div className="links-list">
+            {task.links.map((l) => (
+              <button
+                key={l.type + ":" + l.id}
+                type="button"
+                className="tag-chip"
+                onClick={() => onOpenLink?.(l.id)}
+              >
+                {l.type} · #{padId(l.id)}
+              </button>
+            ))}
+          </div>
         </div>
       ) : null}
     </>

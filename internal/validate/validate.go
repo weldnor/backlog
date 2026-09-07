@@ -190,7 +190,100 @@ func checkFiles(c *collector, st *store.Store) error {
 				"identifier %d is used by more than one task: %s", id, joinOthers(files, f))
 		}
 	}
+
+	checkLinkTargets(c, entries, byID)
+	checkLinkReciprocity(c, entries)
 	return nil
+}
+
+// checkLinkTargets flags a link whose target id names no task in this
+// backlog. It runs only after every file has been read, since whether a
+// target exists is a cross-file question a single file's parse cannot
+// answer; a self-link and a malformed entry are already caught there.
+// Never repairable: whether the id was mistyped or the target was removed on
+// purpose is a judgement, not something --fix can guess.
+func checkLinkTargets(c *collector, entries []store.Entry, byID map[int][]string) {
+	for _, e := range entries {
+		if e.Err != nil || e.Task == nil {
+			continue
+		}
+		rel := c.rel(e.Path)
+		for _, l := range e.Task.Links {
+			if _, ok := byID[l.ID]; !ok {
+				c.add(task.SeverityWarning, rel, false,
+					"links to task %d (%s) which does not exist", l.ID, l.Type)
+			}
+		}
+	}
+}
+
+// reciprocalType returns the link type expected on the other side of a
+// paired relationship — blocks/blocked-by and duplicates/duplicated-by each
+// name the same fact from opposite ends — and false for a type with no
+// counterpart to check, which is only related, since it is symmetric with
+// itself and a related link pointing back is exactly what it already looks
+// like on the other file.
+func reciprocalType(t string) (string, bool) {
+	switch t {
+	case task.LinkBlocks:
+		return task.LinkBlockedBy, true
+	case task.LinkBlockedBy:
+		return task.LinkBlocks, true
+	case task.LinkDuplicates:
+		return task.LinkDuplicatedBy, true
+	case task.LinkDuplicatedBy:
+		return task.LinkDuplicates, true
+	case task.LinkRelated:
+		return task.LinkRelated, true
+	}
+	return "", false
+}
+
+// checkLinkReciprocity flags a link whose target exists but does not link
+// back with the expected type — a link is written on one file only (see
+// task.Link), so nothing keeps the two sides in agreement automatically.
+// This is what notices a link added on one side of a decision and never
+// carried to the other, or a stale one left behind after the other file's
+// link was removed or retyped. It is a warning, and never repairable: fixing
+// it means writing to the *other* task's file, which is a second author's
+// decision to make, not something a single-file operation can decide for
+// them. A target that does not exist at all is reported once already, by
+// checkLinkTargets, so this skips it rather than reporting it again.
+func checkLinkReciprocity(c *collector, entries []store.Entry) {
+	byID := map[int]*task.Task{}
+	for _, e := range entries {
+		if e.Err == nil && e.Task != nil && e.Task.ID > 0 {
+			byID[e.Task.ID] = e.Task
+		}
+	}
+	for _, e := range entries {
+		if e.Err != nil || e.Task == nil {
+			continue
+		}
+		rel := c.rel(e.Path)
+		for _, l := range e.Task.Links {
+			target, ok := byID[l.ID]
+			if !ok {
+				continue
+			}
+			want, ok := reciprocalType(l.Type)
+			if !ok || hasLink(target.Links, want, e.Task.ID) {
+				continue
+			}
+			c.add(task.SeverityWarning, rel, false,
+				"task %d does not link back with %s; this task records %s:%d",
+				l.ID, want, l.Type, l.ID)
+		}
+	}
+}
+
+func hasLink(links []task.Link, typ string, id int) bool {
+	for _, l := range links {
+		if l.Type == typ && l.ID == id {
+			return true
+		}
+	}
+	return false
 }
 
 func joinOthers(files []string, self string) string {

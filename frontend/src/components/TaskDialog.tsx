@@ -19,6 +19,8 @@ interface TaskDialogProps {
   onCreate: (body: CreateTaskBody) => void;
   onPatch: (body: PatchTaskBody) => void;
   onDelete: () => void;
+  // Jumps to another task from a link chip, replacing what is open.
+  onOpenLink: (id: number) => void;
 }
 
 const FOCUSABLE =
@@ -158,7 +160,7 @@ export function TaskDialog(props: TaskDialogProps) {
               onDelete={props.onDelete}
             />
           ) : (
-            <ReadView task={task} />
+            <ReadView task={task} onOpenLink={props.onOpenLink} />
           )}
         </div>
         <MetadataAside task={task} />

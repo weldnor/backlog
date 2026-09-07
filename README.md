@@ -82,6 +82,7 @@ backlog add "HTTP 500 on login" \
 | `--tag` | a tag; repeatable |
 | `--file` | a source file the finding concerns; repeatable |
 | `--ref` | a free-form link to external work; repeatable |
+| `--link` | a typed link to another task, `type:id`; repeatable — see `backlog link` |
 | `--author` | `agent` (default) or `human` |
 
 The current git branch and commit are recorded automatically, and are simply
@@ -191,21 +192,47 @@ eliminate, which is why the reason is not optional.
 
 ### `backlog edit`
 
-Changes title, description or tags — the fields `set` deliberately does not
-reach, because they are prose and content rather than workflow state. At least
-one is required.
+Changes title, description, tags or links — the fields `set` deliberately does
+not reach, because they are prose and content rather than workflow state. At
+least one is required.
 
 ```
 backlog edit 1 --title "Sharper title"
 backlog edit 1 --description "Updated context."
 backlog edit 1 --tag bug --tag concurrency
+backlog edit 1 --link blocks:5 --link related:12
 backlog edit 1 --title "..." --description "..." --tag bug
 ```
 
-`--tag` is repeatable and, when given at all, replaces the entire tag list
-rather than adding to it — the same full-replacement semantics `browse` uses.
-A title change renames the file the same way `set` never does, since `set`
-never touches the title.
+`--tag` and `--link` are each repeatable and, when given at all, replace the
+entire tag or link list rather than adding to them — the same
+full-replacement semantics `browse` uses. Adding a single link without
+restating every existing one is what `backlog link add` is for. A title
+change renames the file the same way `set` never does, since `set` never
+touches the title.
+
+### `backlog link`
+
+Adds or removes one typed link from a task to another, incrementally — unlike
+`edit --link`'s full replacement, `link add` and `link rm` touch only the one
+link named, so recording "this also blocks task 12" never requires knowing or
+restating the task's other links first.
+
+```
+backlog link add 5 blocks 12
+backlog link add 5 related 9
+backlog link rm 5 blocks 12
+```
+
+The permitted types are `related`, `blocks`, `blocked-by`, `duplicates` and
+`duplicated-by`. A link is recorded on the one task it is added to — never
+mirrored onto the target automatically, so this stays a one-file operation
+the same way every other write in this tool is. `backlog validate` is what
+notices a target that does not exist, or a target that does not link back
+with the type its side of the relationship expects (`blocks` expects
+`blocked-by` back, and so on; `related` expects `related` back); neither is
+something `--fix` repairs, since correcting it means writing to a second
+task's file, and that file's author is who decides whether to.
 
 ### `backlog tag`
 
@@ -286,9 +313,10 @@ prose to delete, which no tool can decide.
 
 Starts a local web UI for the backlog: a list and a board view, filters by
 status/priority/tag and a free-text search, a detail dialog for reading and
-editing a task, and a form for creating one. Title, description and tags can
-also be edited from the terminal with `backlog edit`; `set` still only reaches
-status, priority, the decline reason and references.
+editing a task, and a form for creating one. The read view shows a task's
+links as clickable chips that open the linked task. Title, description, tags
+and links can also be edited from the terminal with `backlog edit`; `set`
+still only reaches status, priority, the decline reason and references.
 
 Unlike `backlog list`, the UI shows tasks in every status by default — `done`
 and `declined` included — so the whole backlog is visible at a glance; the
@@ -358,6 +386,9 @@ priority: medium
 tags:
   - bug
   - concurrency
+links:
+  - type: blocked-by
+    id: 2
 metadata:
   schema: 1
   created: 2026-08-30T20:59:51Z
@@ -377,8 +408,9 @@ The frontmatter is split by one question: **would a person edit this field on
 purpose?**
 
 - **Top level — author-owned.** `id`, `title`, `status`, `priority`, `reason`,
-  `tags`. Safe to edit by hand. A field the CLI does not recognise is preserved
-  on write and reported only as a warning, leaving room to experiment.
+  `tags`, `links`. Safe to edit by hand. A field the CLI does not recognise is
+  preserved on write and reported only as a warning, leaving room to
+  experiment.
 - **`metadata` — tool-owned.** `schema`, `created`, `author`, `source`, `refs`.
   The key set is **closed**: an unrecognised key is an error, which is what
   catches a typo like `creted`.
@@ -416,6 +448,16 @@ identifier scheme are fixed.
 Entries in `metadata.refs` are stored verbatim and never resolved. The binary
 has no knowledge of OpenSpec, GitHub issues, or any other planning system; all
 of that lives in the triage skill.
+
+`links` is a list of `{type, id}` entries pointing at other tasks in the same
+backlog — unlike `refs`, which point outside it and are never resolved, a
+link's `id` names a task file the tool does know about. The permitted types
+are `related`, `blocks`, `blocked-by`, `duplicates` and `duplicated-by`. A
+link is recorded on the one task it is added to and never written onto the
+target automatically, keeping every operation a one-file write; use
+`backlog link` or `edit --link` to change it, and `backlog validate` to catch
+a target that no longer exists or does not link back with the type its side
+of the relationship expects.
 
 ## Hooks
 

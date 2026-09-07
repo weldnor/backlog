@@ -331,6 +331,10 @@ textarea.input { min-height: 90px; resize: vertical; font-family: var(--font-mon
 .decline-callout .heading { font: 700 10px/1 var(--font-body); letter-spacing: 0.13em; color: var(--color-accent-700); margin-bottom: 7px; }
 .decline-callout .text { font: 400 13.5px/1.6 var(--font-body); max-width: 62ch; }
 
+.links-block { margin-top: var(--space-4); }
+.links-block .heading { font: 700 10px/1 var(--font-body); letter-spacing: 0.13em; color: var(--color-neutral-600); margin-bottom: 7px; }
+.links-list { display: flex; flex-wrap: wrap; gap: 6px; }
+
 .edit-row { display: flex; gap: 24px; margin-bottom: 16px; flex-wrap: wrap; }
 .edit-actions { display: flex; align-items: center; gap: 10px; margin-top: 16px; }
 .error-note { font: 500 12.5px/1.5 var(--font-body); color: var(--color-accent-700); margin: -6px 0 16px; }

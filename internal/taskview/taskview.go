@@ -16,15 +16,22 @@ import (
 // from the internal model, and metadata.schema exists so it can be moved
 // deliberately.
 type TaskView struct {
-	ID          int      `json:"id"`
-	Title       string   `json:"title"`
-	Status      string   `json:"status"`
-	Priority    string   `json:"priority"`
-	Reason      string   `json:"reason"`
-	Tags        []string `json:"tags"`
-	Description string   `json:"description"`
-	Metadata    MetaView `json:"metadata"`
-	File        string   `json:"file"`
+	ID          int        `json:"id"`
+	Title       string     `json:"title"`
+	Status      string     `json:"status"`
+	Priority    string     `json:"priority"`
+	Reason      string     `json:"reason"`
+	Tags        []string   `json:"tags"`
+	Links       []LinkView `json:"links"`
+	Description string     `json:"description"`
+	Metadata    MetaView   `json:"metadata"`
+	File        string     `json:"file"`
+}
+
+// LinkView is the JSON shape of a typed reference to another task.
+type LinkView struct {
+	Type string `json:"type"`
+	ID   int    `json:"id"`
 }
 
 // MetaView is the JSON shape of the tool-owned metadata block.
@@ -54,6 +61,7 @@ func View(t *task.Task) TaskView {
 		// of the JSON does not vary with status.
 		Reason:      t.Reason,
 		Tags:        nonNil(t.Tags),
+		Links:       linkViews(t.Links),
 		Description: strings.TrimRight(t.Body, "\n"),
 		Metadata: MetaView{
 			Schema:  t.Meta.Schema,
@@ -86,4 +94,14 @@ func nonNil(s []string) []string {
 		return []string{}
 	}
 	return s
+}
+
+// linkViews converts a task's links to their JSON shape, always non-nil so
+// the field is [] rather than null when there are none.
+func linkViews(links []task.Link) []LinkView {
+	out := make([]LinkView, 0, len(links))
+	for _, l := range links {
+		out = append(out, LinkView{Type: l.Type, ID: l.ID})
+	}
+	return out
 }

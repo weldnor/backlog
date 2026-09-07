@@ -23,10 +23,12 @@ func runAdd(env Env, args []string) error {
 		tags        stringList
 		files       stringList
 		refs        stringList
+		linkFlags   stringList
 	)
 	fs.Var(&tags, "tag", "a tag to attach (repeatable)")
 	fs.Var(&files, "file", "a source file the finding concerns (repeatable)")
 	fs.Var(&refs, "ref", "a free-form reference to external work (repeatable)")
+	fs.Var(&linkFlags, "link", "a link to another task, type:id (repeatable); types: "+strings.Join(task.LinkTypes, ", "))
 	if err := parseFlags(fs, args); err != nil {
 		return err
 	}
@@ -46,6 +48,10 @@ func runAdd(env Env, args []string) error {
 	if !task.ValidPriority(*priority) {
 		return usagef("unknown priority %q, expected one of %s", *priority, strings.Join(task.Priorities, ", "))
 	}
+	links, err := parseLinks(linkFlags)
+	if err != nil {
+		return err
+	}
 
 	st, err := openStore(env)
 	if err != nil {
@@ -53,6 +59,7 @@ func runAdd(env Env, args []string) error {
 	}
 
 	t := task.New(text, *description, tags, files, refs, *author, *priority, store.Provenance(st.Project), time.Now())
+	t.Links = task.NormalizeLinks(links)
 	// t has no id or file yet: those are claimed atomically as part of the
 	// write itself, so a pre-add hook necessarily runs before either exists.
 	if err := hooks.RunPre(env.Stderr, st.Root, st.Project, hooks.PreAdd, t, nil); err != nil {
@@ -185,6 +192,9 @@ func writeTaskDetail(env Env, t *task.Task) {
 	}
 	for _, ref := range t.Meta.Refs {
 		fmt.Fprintf(w, "ref      %s\n", ref)
+	}
+	for _, l := range t.Links {
+		fmt.Fprintf(w, "link     %s:%d\n", l.Type, l.ID)
 	}
 	if body := strings.TrimRight(t.Body, "\n"); body != "" {
 		fmt.Fprintln(w)

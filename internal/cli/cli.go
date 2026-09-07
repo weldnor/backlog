@@ -61,6 +61,7 @@ func commands() []command {
 		{"set", "change a task's status or attach a reference", runSet},
 		{"edit", "change a task's title, description or tags", runEdit},
 		{"tag", "rename or remove a tag across every task (rm|rename)", runTag},
+		{"link", "add or remove a link from one task to another (add|rm)", runLink},
 		{"rm", "delete a task", runRm},
 		{"stats", "summarize the backlog by status, priority and tag", runStats},
 		{"validate", "check the backlog for problems", runValidate},

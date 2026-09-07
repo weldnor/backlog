@@ -132,10 +132,62 @@ var MetadataKeys = []string{"schema", "created", "author", "source", "refs"}
 // SourceKeys is the closed set of keys permitted under `metadata.source`.
 var SourceKeys = []string{"files", "branch", "commit"}
 
+// The permitted relationship types between two tasks. Each pair reads in
+// both directions on purpose — Blocks/BlockedBy and Duplicates/DuplicatedBy
+// — because a link is recorded on one file only (see Link), and which half
+// of the pair is written is what tells a reader which direction it runs.
+// Related has no counterpart: the relationship is symmetric.
+const (
+	LinkRelated      = "related"
+	LinkBlocks       = "blocks"
+	LinkBlockedBy    = "blocked-by"
+	LinkDuplicates   = "duplicates"
+	LinkDuplicatedBy = "duplicated-by"
+)
+
+// LinkTypes lists the permitted link types.
+var LinkTypes = []string{LinkRelated, LinkBlocks, LinkBlockedBy, LinkDuplicates, LinkDuplicatedBy}
+
+// ValidLinkType reports whether s is one of the permitted link types.
+func ValidLinkType(s string) bool {
+	for _, v := range LinkTypes {
+		if v == s {
+			return true
+		}
+	}
+	return false
+}
+
+// Link is a typed reference from this task to another task in the same
+// backlog. Unlike Refs, which point outside the backlog and are never
+// resolved, a Link's ID names another task file — but recording one is still
+// a one-file operation: it is written only on this task, not mirrored onto
+// the target, so two agents on parallel branches never conflict over it.
+// `backlog validate` is what notices a target that does not exist.
+type Link struct {
+	Type string
+	ID   int
+}
+
+// NormalizeLinks removes duplicate (type, id) pairs while preserving the
+// order the author wrote, the same way NormalizeTags does for tags.
+func NormalizeLinks(links []Link) []Link {
+	seen := make(map[Link]bool, len(links))
+	out := make([]Link, 0, len(links))
+	for _, l := range links {
+		if seen[l] {
+			continue
+		}
+		seen[l] = true
+		out = append(out, l)
+	}
+	return out
+}
+
 // TopLevelKeys are the frontmatter keys the CLI understands. Unlike the
 // metadata block the top level is author-owned, so a key outside this set is
 // preserved and reported only as a warning.
-var TopLevelKeys = []string{"id", "title", "status", "priority", "reason", "tags", "metadata"}
+var TopLevelKeys = []string{"id", "title", "status", "priority", "reason", "tags", "links", "metadata"}
 
 // Task is one backlog entry.
 type Task struct {
@@ -149,7 +201,11 @@ type Task struct {
 	// state the task is no longer in.
 	Reason string
 	Tags   []string
-	Meta   Metadata
+	// Links are typed references to other tasks in the same backlog — see
+	// Link. Author-owned like Tags: a decision someone made, not something
+	// the tool infers.
+	Links []Link
+	Meta  Metadata
 
 	// Body is the markdown description. It may be empty.
 	Body string

@@ -274,6 +274,7 @@ export function App() {
           onCreate={handleCreate}
           onPatch={handlePatch}
           onDelete={handleDelete}
+          onOpenLink={openTask}
         />
       ) : null}
     </div>

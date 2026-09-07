@@ -319,6 +319,69 @@ func TestReferencesAreCheckedButNotResolved(t *testing.T) {
 	}
 }
 
+func TestLinkChecks(t *testing.T) {
+	t.Run("dangling target is a warning", func(t *testing.T) {
+		st := newBacklog(t)
+		writeTask(t, st, "001-a-clean-task.md", strings.Replace(clean,
+			"metadata:", "links:\n  - type: blocks\n    id: 99\nmetadata:", 1))
+		report := run(t, st, Options{})
+		f := mustFind(t, report, "task 99 (blocks) which does not exist")
+		if f.Severity != "warning" || f.Repairable {
+			t.Errorf("finding = %+v, want a non-repairable warning", f)
+		}
+	})
+
+	t.Run("missing reciprocal link is a warning", func(t *testing.T) {
+		st := newBacklog(t)
+		writeTask(t, st, "001-a-clean-task.md", strings.Replace(clean,
+			"metadata:", "links:\n  - type: blocks\n    id: 2\nmetadata:", 1))
+		writeTask(t, st, "002-b.md", strings.Replace(strings.Replace(clean, "id: 1", "id: 2", 1),
+			"title: A clean task", "title: B", 1))
+
+		report := run(t, st, Options{})
+		f := mustFind(t, report, "task 2 does not link back with blocked-by")
+		if f.Severity != "warning" || f.Repairable {
+			t.Errorf("finding = %+v, want a non-repairable warning: reciprocating means writing the other file, which is that file's author's decision", f)
+		}
+	})
+
+	t.Run("reciprocal link satisfies the check", func(t *testing.T) {
+		st := newBacklog(t)
+		writeTask(t, st, "001-a-clean-task.md", strings.Replace(clean,
+			"metadata:", "links:\n  - type: blocks\n    id: 2\nmetadata:", 1))
+		writeTask(t, st, "002-b.md", strings.Replace(strings.Replace(strings.Replace(clean, "id: 1", "id: 2", 1),
+			"title: A clean task", "title: B", 1),
+			"metadata:", "links:\n  - type: blocked-by\n    id: 1\nmetadata:", 1))
+
+		report := run(t, st, Options{})
+		if _, ok := find(report, "does not link back"); ok {
+			t.Errorf("a reciprocated link must not be flagged: %v", messages(report))
+		}
+	})
+
+	t.Run("related is checked for reciprocity too", func(t *testing.T) {
+		st := newBacklog(t)
+		writeTask(t, st, "001-a-clean-task.md", strings.Replace(clean,
+			"metadata:", "links:\n  - type: related\n    id: 2\nmetadata:", 1))
+		writeTask(t, st, "002-b.md", strings.Replace(strings.Replace(clean, "id: 1", "id: 2", 1),
+			"title: A clean task", "title: B", 1))
+
+		report := run(t, st, Options{})
+		mustFind(t, report, "task 2 does not link back with related")
+	})
+
+	t.Run("self-link is an error, not a dangling or missing-reciprocal warning", func(t *testing.T) {
+		st := newBacklog(t)
+		writeTask(t, st, "001-a-clean-task.md", strings.Replace(clean,
+			"metadata:", "links:\n  - type: related\n    id: 1\nmetadata:", 1))
+		report := run(t, st, Options{})
+		f := mustFind(t, report, "links to itself")
+		if f.Severity != "error" {
+			t.Errorf("severity = %q, want error", f.Severity)
+		}
+	})
+}
+
 func TestFixIsOptIn(t *testing.T) {
 	st := newBacklog(t)
 	path := writeTask(t, st, "001-the-old-title.md", clean)
