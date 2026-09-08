@@ -32,7 +32,7 @@ The CLI SHALL provide a `browse` command that starts a local HTTP server serving
 - **THEN** the server binds to that host and a warning is printed that the UI's write API is now reachable without authentication from beyond the local machine
 
 ### Requirement: Browsing the task list
-The web UI SHALL display the tasks in the backlog ordered by descending priority then ascending identifier, matching `backlog list`, and SHALL support narrowing the list by status, by tag and by priority, matching the selection rules `backlog list --all` already applies. The UI SHALL also support filtering the currently loaded list by a free-text match against title, description and tags, evaluated locally without a further request to the server.
+The web UI SHALL display the tasks in the backlog ordered by descending priority then ascending identifier, matching `backlog list`, and SHALL support narrowing the list by status, by tag and by priority. The UI SHALL also support filtering the currently loaded list by a free-text match against title, description and tags, evaluated locally without a further request to the server.
 
 #### Scenario: Opening the UI
 - **WHEN** the web UI is opened against a backlog containing tasks in every status
@@ -47,7 +47,7 @@ The web UI SHALL display the tasks in the backlog ordered by descending priority
 - **THEN** only tasks whose title, description or tags contain that text, case-insensitively, remain visible, without a new page load
 
 ### Requirement: Switching between a list and a board view
-The web UI SHALL offer two views of the currently filtered tasks, switchable without a page reload: a list (one row per task) and a board (one column per status, in the fixed order `todo`, `doing`, `done`, `declined`). Both views SHALL reflect the same filters. The board view SHALL NOT support changing a task's status, or any other field, by dragging it; changing a task's status SHALL be done the same way in both views — by editing the task.
+The web UI SHALL offer two views of the currently filtered tasks, switchable without a page reload: a list (one row per task) and a board (one column per status, in the fixed order `todo`, `doing`, `done`, `declined`). Both views SHALL reflect the same filters. On the board view the UI SHALL allow a task's status to be changed by dragging its card into another status column; the resulting change SHALL be applied exactly as an edit of the task's status is applied — same validation, same persisted file — and SHALL leave every other field of the task unchanged. Dragging a card onto the column of its current status, or a drag that does not complete on a column, SHALL leave the task unchanged. Dragging a card onto the `declined` column SHALL first prompt for a decline reason and SHALL leave the task unchanged if no non-empty reason is given. No field other than status SHALL be changeable by dragging, and changing a task's status by editing it SHALL remain available in both views.
 
 #### Scenario: Switching to the board view
 - **WHEN** the board view is selected
@@ -59,7 +59,27 @@ The web UI SHALL offer two views of the currently filtered tasks, switchable wit
 
 #### Scenario: No drag-and-drop
 - **WHEN** the board view is shown
-- **THEN** no action in the UI allows a task to be moved between columns by dragging it
+- **THEN** the only field a drag can change is a task's status; no drag changes a task's priority, tags, title or description, and the list view has no drag interaction at all
+
+#### Scenario: Moving a task by dragging its card
+- **WHEN** a task's card is dragged from its column and dropped onto the `doing` column on the board
+- **THEN** the task's status is set to `doing`, the change is saved to the same task file `backlog` operates on with every other field unchanged, and the card appears in the `doing` column
+
+#### Scenario: Dragging a card onto the declined column
+- **WHEN** a task's card is dropped onto the `declined` column and a non-empty reason is supplied when prompted
+- **THEN** the task's status is set to `declined` with that reason recorded, and the card appears in the `declined` column
+
+#### Scenario: Declining by drag without a reason
+- **WHEN** a task's card is dropped onto the `declined` column and the reason prompt is cancelled or left empty
+- **THEN** no request changes the task, and the card stays in its original column
+
+#### Scenario: Dropping a card onto its own column
+- **WHEN** a task's card is dropped onto the column matching the task's current status
+- **THEN** no request is made and the board is unchanged
+
+#### Scenario: A dragged status change is consistent with the CLI
+- **WHEN** a task's status is changed by dragging its card on the board and the task is then inspected with `backlog show --json`
+- **THEN** the reported status matches the column the card was dropped on
 
 ### Requirement: Viewing a task's detail
 Selecting a task from either view SHALL open a dialog showing that task's title, status, priority, rendered description, and — when the task is declined — its decline reason, together with its tool-owned metadata (identifier, created timestamp, author, git provenance, source files, references) displayed read-only. The dialog SHALL provide a way to switch from this read view to editing the task, per the following requirement.

@@ -30,16 +30,16 @@ Validation SHALL exit zero when no errors were found and non-zero when at least 
 - **WHEN** validation finds at least one error
 - **THEN** the command exits non-zero
 
-### Requirement: Structural checks
-Validation SHALL verify that the backlog directory contains the expected task and archive directories and SHALL report any file inside them that is not a task file.
+### Requirement: Directory structure checks
+Validation SHALL verify that the backlog directory contains the expected `.backlog/tasks/` directory and SHALL report any file inside it that is not a task file.
 
-#### Scenario: Missing archive directory
-- **WHEN** the archive directory is absent
-- **THEN** validation reports it
+#### Scenario: Missing task directory
+- **WHEN** the `.backlog/tasks/` directory is absent
+- **THEN** validation reports it as an error
 
 #### Scenario: Stray file among tasks
 - **WHEN** a file that is not a task markdown file is present in the task directory
-- **THEN** validation reports it
+- **THEN** validation reports it as a warning
 
 ### Requirement: Per-file checks
 For each task file, validation SHALL verify that the frontmatter parses, that `id`, `title` and `status` are present and well-formed, that `status` is one of the permitted values, that `priority`, when present, is one of the permitted values, that `reason` is present when and only when the status is `declined`, that `tags` is a list of non-empty strings, that timestamps are valid RFC 3339 values, that every key under `metadata` belongs to the closed permitted set, and that the identifier in the frontmatter matches the identifier in the file name. A task file carrying no `priority` field SHALL be reported as a warning rather than an error, since the file is still fully readable and the omission has a single unambiguous correction.
@@ -86,8 +86,8 @@ A declined task with no `reason`, and a `reason` on a task in any other status, 
 - **WHEN** a task file named for identifier 7 declares a different identifier in its frontmatter
 - **THEN** validation reports an error
 
-### Requirement: Cross-file checks
-Validation SHALL detect identifiers used by more than one task, task files whose name slug no longer matches their title, tasks in a terminal status — `done` or `declined` — outside the archive directory, and tasks in a non-terminal status inside the archive directory.
+### Requirement: Cross-file consistency checks
+Validation SHALL detect identifiers used by more than one task and task files whose name slug no longer matches their title. Validation SHALL NOT report a task as misplaced on account of its status, since every task lives in the one directory regardless of status.
 
 #### Scenario: Duplicate identifier
 - **WHEN** two task files declare the same identifier
@@ -97,17 +97,9 @@ Validation SHALL detect identifiers used by more than one task, task files whose
 - **WHEN** a task's title was edited so that the file name slug no longer matches it
 - **THEN** validation reports a warning
 
-#### Scenario: Completed task left among active tasks
-- **WHEN** a task in status `done` is present in the task directory
-- **THEN** validation reports a warning
-
-#### Scenario: Declined task left among active tasks
-- **WHEN** a task in status `declined` is present in the task directory
-- **THEN** validation reports a warning
-
-#### Scenario: Active task left in the archive
-- **WHEN** a task in status `todo` is present in the archive directory
-- **THEN** validation reports a warning
+#### Scenario: A completed task is not misplaced
+- **WHEN** a task in status `done` or `declined` sits in `.backlog/tasks/` alongside active tasks
+- **THEN** validation does not report it, since there is only one task directory
 
 ### Requirement: References are not resolved
 Validation SHALL verify only that entries in `metadata.refs` are non-empty strings. It SHALL NOT interpret their content or check whether they point at anything that exists.
@@ -120,16 +112,12 @@ Validation SHALL verify only that entries in `metadata.refs` are non-empty strin
 - **WHEN** a task carries an empty string in its reference list
 - **THEN** validation reports an error
 
-### Requirement: Automatic repair
-Validation SHALL offer an opt-in repair mode that fixes only findings with a single unambiguous correction: renaming a file whose slug drifted from its title, moving a task to the directory its status requires, adding a missing format version, adding a missing priority as the default `medium`, normalising timestamp formatting, and de-duplicating tags. It SHALL NOT attempt to repair findings that require a judgement, such as duplicate identifiers, unparseable frontmatter, a priority whose value is outside the permitted set, a declined task with no reason, or a reason recorded on a task that is not declined.
+### Requirement: Repair mode
+Validation SHALL offer an opt-in repair mode that fixes only findings with a single unambiguous correction: renaming a file whose slug drifted from its title, adding a missing format version, adding a missing priority as the default `medium`, normalising timestamp formatting, and de-duplicating tags. It SHALL NOT attempt to repair findings that require a judgement, such as duplicate identifiers, unparseable frontmatter, a priority whose value is outside the permitted set, a declined task with no reason, or a reason recorded on a task that is not declined.
 
 #### Scenario: Repairing a drifted file name
 - **WHEN** repair mode is run on a backlog whose task file name no longer matches its title
 - **THEN** the file is renamed and the action is reported
-
-#### Scenario: Moving a declined task to the archive
-- **WHEN** repair mode is run on a backlog containing a declined task in the task directory
-- **THEN** the file is moved to the archive and the action is reported
 
 #### Scenario: Adding a missing priority
 - **WHEN** repair mode is run on a backlog containing a task file with no priority field
