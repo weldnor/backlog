@@ -19,28 +19,24 @@ The CLI SHALL locate the backlog by searching for a `.backlog/` directory in the
 - **WHEN** a project containing `.backlog/` is nested inside another project that also contains `.backlog/`
 - **THEN** the CLI operates on the nearest `.backlog/` directory
 
-### Requirement: Directory layout
-A backlog SHALL consist of exactly two task directories: `.backlog/tasks/` holding tasks in status `todo` or `doing`, and `.backlog/archive/` holding tasks in status `done` or `declined`. The CLI SHALL NOT require or read any configuration file.
+### Requirement: Single task directory
+A backlog SHALL consist of exactly one task directory, `.backlog/tasks/`, holding every task regardless of status. The CLI SHALL NOT require or read any configuration file, and a change of a task's status SHALL NOT move its file to a different directory.
 
-#### Scenario: Task reaches done
-- **WHEN** a task's status is set to `done`
-- **THEN** its file is moved from `.backlog/tasks/` to `.backlog/archive/` with its name unchanged
+#### Scenario: A fresh backlog has one task directory
+- **WHEN** `backlog init` is run in a project with no backlog
+- **THEN** `.backlog/tasks/` is created and no other task directory is created
 
-#### Scenario: Task is declined
-- **WHEN** a task's status is set to `declined`
-- **THEN** its file is moved from `.backlog/tasks/` to `.backlog/archive/` with its name unchanged
+#### Scenario: Task reaches a terminal status
+- **WHEN** a task's status is set to `done` or `declined`
+- **THEN** its status is updated and its file stays in `.backlog/tasks/`, its name changing only if its title changed
 
-#### Scenario: Task leaves done
-- **WHEN** an archived task's status is set to `todo` or `doing`
-- **THEN** its file is moved from `.backlog/archive/` back to `.backlog/tasks/`
-
-#### Scenario: Task leaves declined
-- **WHEN** a task in status `declined` is set to `todo` or `doing`
-- **THEN** its file is moved from `.backlog/archive/` back to `.backlog/tasks/`
+#### Scenario: Task leaves a terminal status
+- **WHEN** a task in status `done` or `declined` is set to `todo` or `doing`
+- **THEN** its status is updated and its file stays in `.backlog/tasks/`
 
 #### Scenario: Moving between terminal statuses
 - **WHEN** a task in status `done` is set to `declined`
-- **THEN** its status is updated and the file stays in `.backlog/archive/`
+- **THEN** its status is updated and its file stays in `.backlog/tasks/`
 
 ### Requirement: Task file format
 A task SHALL be a single UTF-8 markdown file consisting of a YAML frontmatter block followed by a markdown body. The body SHALL be the task description and MAY be empty.
@@ -123,7 +119,7 @@ Task files SHALL NOT store a last-modified timestamp. Modification history is su
 - **THEN** the resulting file diff contains only the changed description and no timestamp change
 
 ### Requirement: Identifier allocation and file naming
-Each task SHALL have an identifier unique within the backlog, allocated as the lowest positive integer not already in use across both task directories. A task file SHALL be named `<id>-<slug>.md`, where `<id>` is the identifier zero-padded to at least three digits and `<slug>` is a kebab-case reduction of the title. Concurrent creation SHALL NOT produce two tasks with the same identifier.
+Each task SHALL have an identifier unique within the backlog, allocated as the lowest positive integer not already in use in the task directory. A task file SHALL be named `<id>-<slug>.md`, where `<id>` is the identifier zero-padded to at least three digits and `<slug>` is a kebab-case reduction of the title. Concurrent creation SHALL NOT produce two tasks with the same identifier.
 
 #### Scenario: First task in an empty backlog
 - **WHEN** a task is created in a backlog with no existing tasks

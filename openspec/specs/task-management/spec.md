@@ -9,7 +9,7 @@ The CLI SHALL provide an `init` command that creates the backlog directory struc
 
 #### Scenario: Initialising a fresh project
 - **WHEN** `backlog init` is run in a project with no backlog
-- **THEN** the task and archive directories are created and the command reports where the backlog was created
+- **THEN** the task directory is created and the command reports where the backlog was created
 
 #### Scenario: Re-running init
 - **WHEN** `backlog init` is run in a project that already has a backlog containing tasks
@@ -38,32 +38,32 @@ The CLI SHALL provide an `add` command that creates a task from a required title
 - **WHEN** `backlog add` is invoked with no terminal attached to standard input
 - **THEN** the command completes without waiting for input
 
-### Requirement: Listing tasks
-The CLI SHALL provide a `list` command that shows tasks in status `todo` and `doing` by default, includes archived tasks — those in status `done` or `declined` — when asked for all tasks, and supports filtering by status, by tag and by priority. A priority filter MAY be given more than once, in which case a task matches when its priority is any of those given; it combines with the status and tag filters so that a task is shown only when it satisfies all of them. Results SHALL be ordered deterministically by descending priority, and by ascending identifier among tasks of equal priority. Human-readable output SHALL additionally group the results by status in the order `todo`, `doing`, `done`, `declined`, preserving that order within each group; machine-readable output SHALL present them as a single sequence in that order.
+### Requirement: Listing tasks by status
+The CLI SHALL provide a `list` command that, invoked with no subcommand, shows tasks in every status. Four subcommands — `todo`, `doing`, `done`, `declined` — SHALL each narrow the listing to tasks in that one status. There SHALL be no flag for selecting status. The command SHALL support filtering by tag and by priority, applied equally to the bare command and to each subcommand. A priority filter MAY be given more than once, in which case a task matches when its priority is any of those given; the tag, priority and subcommand selectors combine so that a task is shown only when it satisfies all of them. Results SHALL be ordered deterministically by descending priority, and by ascending identifier among tasks of equal priority. Human-readable output SHALL additionally group the results by status in the order `todo`, `doing`, `done`, `declined`, preserving that order within each group; machine-readable output SHALL present them as a single sequence in that order.
 
-#### Scenario: Default listing
+#### Scenario: Default listing shows every status
 - **WHEN** `backlog list` is run in a backlog containing tasks in every status
-- **THEN** only tasks in status `todo` and `doing` are shown
+- **THEN** tasks in all four statuses are shown, grouped in the order `todo`, `doing`, `done`, `declined`
 
-#### Scenario: Declined tasks are excluded by default
-- **WHEN** `backlog list` is run in a backlog containing a declined task
-- **THEN** that task is not shown
+#### Scenario: Narrowing to one status
+- **WHEN** `backlog list declined` is run
+- **THEN** only tasks in status `declined` are shown
 
-#### Scenario: Listing everything
-- **WHEN** `backlog list` is run requesting all tasks
-- **THEN** archived tasks are included
+#### Scenario: Narrowing to completed tasks
+- **WHEN** `backlog list done` is run
+- **THEN** only tasks in status `done` are shown
 
-#### Scenario: Listing all tasks includes declined ones
-- **WHEN** `backlog list` is run requesting all tasks in a backlog containing a declined task
-- **THEN** that task is shown, in the group after the tasks in status `done`
+#### Scenario: A status subcommand excludes other statuses
+- **WHEN** `backlog list todo` is run in a backlog that also contains a declined task
+- **THEN** the declined task is not shown
 
-#### Scenario: Filtering to declined tasks
-- **WHEN** `backlog list` is run with a status filter naming `declined`
-- **THEN** only declined tasks are shown, whether or not all tasks were requested
+#### Scenario: Unknown subcommand
+- **WHEN** `backlog list` is run with a word that is not one of the four status subcommands
+- **THEN** the command exits non-zero and lists the permitted subcommands
 
-#### Scenario: Filtering
-- **WHEN** `backlog list` is run with a status filter and a tag filter
-- **THEN** only tasks matching both filters are shown
+#### Scenario: Filtering a subcommand by tag
+- **WHEN** `backlog list todo --tag bug` is run
+- **THEN** only tasks in status `todo` that carry the tag `bug` are shown
 
 #### Scenario: Filtering by priority
 - **WHEN** `backlog list` is run with a priority filter naming `high`
@@ -93,7 +93,7 @@ The CLI SHALL provide a `list` command that shows tasks in status `todo` and `do
 - **WHEN** `backlog list` is run requesting JSON in a backlog with tasks of mixed priority
 - **THEN** the tasks appear as one sequence ordered by descending priority, then by ascending identifier
 
-#### Scenario: Empty backlog
+#### Scenario: Nothing matches
 - **WHEN** `backlog list` is run and no task matches
 - **THEN** the command exits zero and reports that nothing matched
 
@@ -117,21 +117,21 @@ The CLI SHALL provide a `show` command that displays a single task by identifier
 - **THEN** the command exits non-zero and reports that no such task exists
 
 ### Requirement: Changing task status
-The CLI SHALL provide a `set` command that changes a task's status to one of `todo`, `doing`, `done` or `declined`, that changes its priority to one of `high`, `medium` or `low`, that records the reason a task was declined, and that can attach a free-form reference string to the task. Any combination SHALL be permitted in one invocation, and the command SHALL fail when none is supplied. Changing only the priority SHALL leave the status and therefore the task's directory untouched.
+The CLI SHALL provide a `set` command that changes a task's status to one of `todo`, `doing`, `done` or `declined`, that changes its priority to one of `high`, `medium` or `low`, that records the reason a task was declined, and that can attach a free-form reference string to the task. Any combination SHALL be permitted in one invocation, and the command SHALL fail when none is supplied. No status change SHALL move the task file to a different directory.
 
 Setting a task to `declined` SHALL require a reason and SHALL fail without one, so that no decline can be recorded that a later reader cannot audit. Supplying a reason for any status other than `declined` SHALL fail. Supplying a reason alone SHALL be permitted only for a task already in status `declined`, and SHALL replace the recorded text. Setting a declined task to any other status SHALL remove its reason.
 
 #### Scenario: Starting work
 - **WHEN** a task in status `todo` is set to `doing`
-- **THEN** its status is updated and the task remains in the active task directory
+- **THEN** its status is updated
 
 #### Scenario: Completing a task with a reference
 - **WHEN** a task is set to `done` with a reference string supplied
-- **THEN** the status is updated, the reference is recorded on the task, and the file is moved to the archive
+- **THEN** the status is updated and the reference is recorded on the task
 
 #### Scenario: Declining a task
 - **WHEN** a task is set to `declined` with a reason supplied
-- **THEN** the status is updated, the reason is recorded on the task, and the file is moved to the archive
+- **THEN** the status is updated and the reason is recorded on the task
 
 #### Scenario: Declining without a reason
 - **WHEN** a task is set to `declined` with no reason supplied
@@ -139,7 +139,7 @@ Setting a task to `declined` SHALL require a reason and SHALL fail without one, 
 
 #### Scenario: Revising the reason on a declined task
 - **WHEN** `backlog set` is invoked with a reason and no status on a task already in status `declined`
-- **THEN** the recorded reason is replaced, the status is unchanged, and the file stays in the archive
+- **THEN** the recorded reason is replaced and the status is unchanged
 
 #### Scenario: Reason supplied for another status
 - **WHEN** `backlog set` is invoked with a reason and a status of `done`
@@ -151,11 +151,11 @@ Setting a task to `declined` SHALL require a reason and SHALL fail without one, 
 
 #### Scenario: Reopening a declined task
 - **WHEN** a task in status `declined` is set to `todo`
-- **THEN** the status is updated, the reason is removed, and the file is moved back to the active task directory
+- **THEN** the status is updated and the reason is removed
 
 #### Scenario: Raising a task's priority
 - **WHEN** `backlog set` is invoked with a priority and no status
-- **THEN** the priority is updated, the status is unchanged, and the file stays in the directory it was in
+- **THEN** the priority is updated and the status is unchanged
 
 #### Scenario: Changing status and priority together
 - **WHEN** `backlog set` is invoked with both a status and a priority
@@ -201,7 +201,7 @@ The CLI SHALL refuse to set a task's status to `done` while it records a `blocke
 - **THEN** the command succeeds
 
 ### Requirement: Removing a task
-The CLI SHALL provide an `rm` command that permanently deletes a task by identifier from either the active or the archive directory. Removal SHALL be reserved for a task that should never have been recorded — a duplicate, a mis-capture, an accidental entry — and SHALL NOT be the way a reviewer records a decision not to act on a finding, which is what status `declined` is for. The CLI SHALL enforce no such distinction; it is a matter of guidance, and `rm` SHALL delete whatever identifier it is given.
+The CLI SHALL provide an `rm` command that permanently deletes a task by identifier. Removal SHALL be reserved for a task that should never have been recorded — a duplicate, a mis-capture, an accidental entry — and SHALL NOT be the way a reviewer records a decision not to act on a finding, which is what status `declined` is for. The CLI SHALL enforce no such distinction; it is a matter of guidance, and `rm` SHALL delete whatever identifier it is given.
 
 #### Scenario: Removing a task
 - **WHEN** `backlog rm` is invoked with the identifier of an existing task
