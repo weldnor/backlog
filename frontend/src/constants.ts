@@ -55,6 +55,83 @@ export function padId(id: number): string {
   return String(id).padStart(3, "0");
 }
 
+// Display names for statuses and priorities, as the mockups spell them.
+export const STATUS_LABEL: Record<string, string> = {
+  new: "New",
+  todo: "Todo",
+  doing: "Doing",
+  done: "Done",
+  declined: "Declined",
+};
+
+export const PRI_LABEL: Record<string, string> = {
+  high: "High",
+  medium: "Medium",
+  low: "Low",
+};
+
+// The priority dot colour on cards, rows and selects (design.md D6).
+export const PRI_DOT: Record<string, string> = {
+  high: "var(--label-red)",
+  medium: "var(--label-yellow)",
+  low: "var(--label-blue)",
+};
+
+// The ten label tokens a tag's colour is drawn from.
+export const LABEL_COLORS = [
+  "purple",
+  "blue",
+  "red",
+  "green",
+  "yellow",
+  "indigo",
+  "cyan",
+  "blue-deep",
+  "blue-ink",
+  "red-deep",
+].map((name) => `var(--label-${name})`);
+
+// tagColor hashes the lowercase tag name into LABEL_COLORS, so a tag keeps one
+// colour everywhere it is drawn without anyone choosing it.
+export function tagColor(name: string): string {
+  let h = 0;
+  for (const ch of name.toLowerCase()) {
+    h = (h * 31 + (ch.codePointAt(0) ?? 0)) >>> 0;
+  }
+  return LABEL_COLORS[h % LABEL_COLORS.length];
+}
+
+function stripInline(s: string): string {
+  return s
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
+    .replace(/`([^`]+)`/g, "$1")
+    .replace(/(\*\*|__)(.+?)\1/g, "$2")
+    .replace(/(^|\W)[*_](\S(?:[^*_]*\S)?)[*_](?=\W|$)/g, "$1$2");
+}
+
+// descExcerpt is the start of a description as a card shows it: the first
+// paragraph that is not a heading or a code block, with list/quote markers and
+// inline markup removed.
+export function descExcerpt(markdown: string): string {
+  const para: string[] = [];
+  let inCode = false;
+  for (const raw of (markdown || "").split("\n")) {
+    const line = raw.trim();
+    if (/^```/.test(line)) {
+      if (para.length) break;
+      inCode = !inCode;
+      continue;
+    }
+    if (inCode) continue;
+    if (line === "" || /^#{1,6}\s/.test(line)) {
+      if (para.length) break;
+      continue;
+    }
+    para.push(line.replace(/^(?:[-*]|>|\d+\.)\s+/, ""));
+  }
+  return stripInline(para.join(" "));
+}
+
 // Where the task's file lives on disk — the archive directory once it reaches a
 // terminal status, the working directory otherwise.
 export function taskFilePath(t: TaskView): string {

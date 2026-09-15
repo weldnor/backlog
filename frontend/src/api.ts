@@ -118,6 +118,38 @@ export function createTask(body: CreateTaskBody): Promise<TaskView> {
   return api<TaskView>("/api/tasks", jsonBody("POST", body));
 }
 
+// CreateStatusError reports a create whose follow-up status change failed: the
+// task exists, still in `new`, and `task` carries it so the caller can refresh
+// and still name the task it created (design.md D8).
+export class CreateStatusError extends ApiError {
+  task: TaskView;
+  constructor(message: string, status: number, task: TaskView) {
+    super(message, status);
+    this.name = "CreateStatusError";
+    this.task = task;
+  }
+}
+
+// createTaskWithStatus creates a task in the given status. POST cannot set a
+// status, so anything other than `new` is applied afterwards with a PATCH
+// {status} — the same request an edit of the status sends.
+export async function createTaskWithStatus(
+  body: CreateTaskBody,
+  status: string,
+): Promise<TaskView> {
+  const created = await createTask(body);
+  if (status === "new") return created;
+  try {
+    return await patchTask(created.id, { status });
+  } catch (err) {
+    throw new CreateStatusError(
+      err instanceof Error ? err.message : String(err),
+      err instanceof ApiError ? err.status : 0,
+      created,
+    );
+  }
+}
+
 export function patchTask(id: number, body: PatchTaskBody): Promise<TaskView> {
   return api<TaskView>("/api/tasks/" + id, jsonBody("PATCH", body));
 }
