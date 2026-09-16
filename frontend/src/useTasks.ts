@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { listTasks, type TaskView } from "./api";
 
@@ -47,6 +47,10 @@ export function useTasks(filter: VisibleFilter): Tasks {
 
   const visibleKey = visibleParams(filter).toString();
 
+  // With no filter active the visible set *is* the full set, so one request
+  // feeds both instead of fetching ?all=1 twice.
+  const unfiltered = visibleKey === "all=1";
+
   const fetchAll = useCallback(
     () => listTasks({ all: "1" }).then(setAll),
     [],
@@ -54,27 +58,43 @@ export function useTasks(filter: VisibleFilter): Tasks {
   const fetchVisible = useCallback(
     () =>
       listTasks(Object.fromEntries(new URLSearchParams(visibleKey))).then(
-        setVisible,
+        (tasks) => {
+          setVisible(tasks);
+          if (visibleKey === "all=1") setAll(tasks);
+        },
       ),
     [visibleKey],
   );
 
   useEffect(() => {
-    fetchAll().catch((e) => setLoadError(message(e)));
-  }, [fetchAll]);
-
-  useEffect(() => {
     fetchVisible().catch((e) => setLoadError(message(e)));
   }, [fetchVisible]);
+
+  // A filtered view still needs the full set for the chips and counts. It
+  // only changes on a mutation (refresh), so it's fetched on its own just once,
+  // and only when the hook starts filtered — otherwise the fetch above has it.
+  const startedFiltered = useRef(!unfiltered);
+  useEffect(() => {
+    if (!startedFiltered.current) return;
+    fetchAll().catch((e) => setLoadError(message(e)));
+  }, [fetchAll]);
 
   const refresh = useCallback(async () => {
     setLoadError("");
     try {
-      await Promise.all([fetchAll(), fetchVisible()]);
+      await Promise.all(unfiltered ? [fetchVisible()] : [fetchAll(), fetchVisible()]);
     } catch (e) {
       setLoadError(message(e));
     }
-  }, [fetchAll, fetchVisible]);
+  }, [fetchAll, fetchVisible, unfiltered]);
+
+  // Tasks added or changed outside the UI (the CLI, another tab) should show
+  // up without a manual reload; refetching when the window regains focus is
+  // the whole freshness mechanism (design.md D4).
+  useEffect(() => {
+    window.addEventListener("focus", refresh);
+    return () => window.removeEventListener("focus", refresh);
+  }, [refresh]);
 
   return { all, visible, loadError, refresh };
 }

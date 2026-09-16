@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { descExcerpt, LABEL_COLORS, tagColor } from "./constants";
+import { descExcerpt, LABEL_COLORS, tagChipStyle, tagColor } from "./constants";
 
 describe("tagColor", () => {
   it("gives a tag the same label colour every time, ignoring case", () => {
@@ -14,6 +14,21 @@ describe("tagColor", () => {
     colours.forEach((c) => expect(LABEL_COLORS).toContain(c));
     expect(LABEL_COLORS).toHaveLength(10);
     expect(colours.size).toBeGreaterThan(1);
+  });
+});
+
+describe("tagChipStyle", () => {
+  it("puts dark text on the light labels and white text on the rest", () => {
+    const light = ["blue", "green", "yellow", "cyan"].map((n) => `var(--label-${n})`);
+    const seen = new Set<string>();
+    for (let i = 0; i < 200; i++) {
+      const tag = `tag${i}`;
+      const style = tagChipStyle(tag);
+      expect(style.background).toBe(tagColor(tag));
+      expect(style.color).toBe(light.includes(style.background) ? "#131211" : "#ffffff");
+      seen.add(style.background);
+    }
+    expect(seen.size).toBe(LABEL_COLORS.length);
   });
 });
 

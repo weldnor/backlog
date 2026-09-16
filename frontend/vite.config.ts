@@ -10,6 +10,13 @@ import react from "@vitejs/plugin-react";
 export default defineConfig({
   plugins: [react()],
   base: "./",
+  // `npm run dev` talks to a running `backlog browse` (default port 4173)
+  // for the API; override with BACKLOG_API=http://host:port.
+  server: {
+    proxy: {
+      "/api": process.env.BACKLOG_API ?? "http://127.0.0.1:4173",
+    },
+  },
   build: {
     outDir: "../internal/browse/web",
     emptyOutDir: true,

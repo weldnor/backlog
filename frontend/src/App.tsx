@@ -1,26 +1,24 @@
-import { useEffect, useMemo, useReducer, useState } from "react";
+import { useEffect, useMemo, useReducer, useRef } from "react";
 
-import {
-  createTask,
-  deleteTask,
-  getRepo,
-  getTask,
-  patchTask,
-  type CreateTaskBody,
-  type PatchTaskBody,
-  type RepoInfo,
-  type TaskView,
-} from "./api";
-import { BoardView } from "./components/BoardView";
+import { deleteTask, getTask, patchTask, type PatchTaskBody, type TaskView } from "./api";
+import { BoardView, type BoardViewHandle } from "./components/BoardView";
+import { EmptyResult } from "./components/EmptyResult";
+import { FilterRow } from "./components/FilterRow";
+import { hasOpenLayer } from "./components/LayeredDialog";
 import { ListView } from "./components/ListView";
-import { ResultBar } from "./components/ResultBar";
-import { Sidebar } from "./components/Sidebar";
-import { TaskDialog } from "./components/TaskDialog";
+import { TaskForm } from "./components/TaskForm";
+import { TaskModal } from "./components/TaskModal";
+import { ToastHost } from "./components/ToastHost";
 import { TopBar } from "./components/TopBar";
+import { padId } from "./constants";
+import type { ParsedDraft } from "./tokens";
+import { useDialogs } from "./useDialogs";
 import { useTasks } from "./useTasks";
+import { useTheme } from "./useTheme";
+import { useToast } from "./useToast";
 
 type View = "list" | "board";
-type DialogMode = "read" | "edit" | "create";
+type DialogMode = "read" | "create";
 type FilterKey = "status" | "priority" | "tag" | "assignee";
 
 interface State {
@@ -32,6 +30,10 @@ interface State {
   assignee: string | null;
   dialogMode: DialogMode | null;
   openTask: TaskView | null;
+  // Prefill for the full form when it's opened from a draft's Shift+Enter
+  // (design.md D14) — title/priority/tags/assignee only; see App's capture
+  // wiring for why status prefill isn't included yet.
+  createPrefill: Partial<ParsedDraft> | null;
   error: string;
 }
 
@@ -39,10 +41,10 @@ type Action =
   | { type: "set_view"; view: View }
   | { type: "set_query"; query: string }
   | { type: "toggle_filter"; key: FilterKey; value: string }
+  | { type: "clear_filter"; key: FilterKey }
+  | { type: "reset_all" }
   | { type: "open_read"; task: TaskView }
-  | { type: "open_create" }
-  | { type: "enter_edit" }
-  | { type: "leave_edit" }
+  | { type: "open_create"; prefill?: Partial<ParsedDraft> }
   | { type: "close" }
   | { type: "set_error"; error: string }
   | { type: "saved"; task: TaskView };
@@ -56,13 +58,20 @@ const initialState: State = {
   assignee: null,
   dialogMode: null,
   openTask: null,
+  createPrefill: null,
   error: "",
 };
 
 function reducer(state: State, action: Action): State {
   switch (action.type) {
     case "set_view":
-      return { ...state, view: action.view };
+      // The board groups by status itself, so an active status filter would
+      // just hide whole columns for no visible reason (design.md D4).
+      return {
+        ...state,
+        view: action.view,
+        status: action.view === "board" ? null : state.status,
+      };
     case "set_query":
       return { ...state, query: action.query };
     case "toggle_filter":
@@ -70,6 +79,17 @@ function reducer(state: State, action: Action): State {
         ...state,
         [action.key]:
           state[action.key] === action.value ? null : action.value,
+      };
+    case "clear_filter":
+      return { ...state, [action.key]: null };
+    case "reset_all":
+      return {
+        ...state,
+        query: "",
+        status: null,
+        priority: null,
+        tag: null,
+        assignee: null,
       };
     case "open_read":
       return {
@@ -79,11 +99,13 @@ function reducer(state: State, action: Action): State {
         error: "",
       };
     case "open_create":
-      return { ...state, dialogMode: "create", openTask: null, error: "" };
-    case "enter_edit":
-      return { ...state, dialogMode: "edit", error: "" };
-    case "leave_edit":
-      return { ...state, dialogMode: "read", error: "" };
+      return {
+        ...state,
+        dialogMode: "create",
+        openTask: null,
+        error: "",
+        createPrefill: action.prefill ?? null,
+      };
     case "close":
       return {
         ...state,
@@ -103,44 +125,56 @@ function reducer(state: State, action: Action): State {
   }
 }
 
-// currentCommand renders the live `backlog list …` invocation the current
-// filters map to. The UI always shows every status, so the base command is
-// `backlog list --all` unless an explicit status filter narrows it.
-function currentCommand(state: State): string {
-  const parts = ["backlog", "list"];
-  if (state.status) {
-    parts.push("--status", state.status);
-  } else {
-    parts.push("--all");
-  }
-  if (state.priority) parts.push("--priority", state.priority);
-  if (state.tag) parts.push("--tag", state.tag);
-  if (state.assignee) parts.push("--assignee", state.assignee);
-  parts.push("--json");
-  return parts.join(" ");
-}
-
 function message(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
 export function App() {
   const [state, dispatch] = useReducer(reducer, initialState);
-  const [repo, setRepo] = useState<RepoInfo | null>(null);
+  const { theme, toggle: toggleTheme } = useTheme();
+  const { confirm, askReason, dialogs } = useDialogs();
+  const { toast, show: showToast, dismiss: dismissToast } = useToast();
+  const boardRef = useRef<BoardViewHandle>(null);
 
-  const { all, visible, refresh } = useTasks({
+  const { all, visible, loadError, refresh } = useTasks({
     status: state.status,
     priority: state.priority,
     tag: state.tag,
     assignee: state.assignee,
   });
 
+  // The floating capture button and the "n" shortcut open a draft in the
+  // board's first column, or the full form in list view (design.md D14). "n"
+  // is ignored while a text field has focus or a dialog layer is open.
+  function openCapture() {
+    if (state.dialogMode || hasOpenLayer()) return;
+    if (state.view === "board") {
+      boardRef.current?.openCapture();
+    } else {
+      dispatch({ type: "open_create" });
+    }
+  }
+
   useEffect(() => {
-    // The repo chip is decorative; a failure here is not fatal.
-    getRepo()
-      .then(setRepo)
-      .catch(() => {});
-  }, []);
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key !== "n" || e.ctrlKey || e.metaKey || e.altKey) return;
+      const target = e.target as HTMLElement | null;
+      if (target?.closest("input, textarea, select, [contenteditable='true']")) return;
+      if (state.dialogMode || hasOpenLayer()) return;
+      e.preventDefault();
+      openCapture();
+    }
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.view, state.dialogMode]);
+
+  function openFullFormFromDraft(parsed: ParsedDraft) {
+    dispatch({
+      type: "open_create",
+      prefill: { title: parsed.title, priority: parsed.priority, tags: parsed.tags, assignee: parsed.assignee },
+    });
+  }
 
   // Free-text search is a pure derived filter over the loaded set — title,
   // description and tags, case-insensitive, no request.
@@ -165,34 +199,32 @@ export function App() {
       .catch((err) => dispatch({ type: "set_error", error: message(err) }));
   }
 
-  function handleCreate(body: CreateTaskBody) {
-    createTask(body)
-      .then(() => {
-        dispatch({ type: "close" });
-        return refresh();
-      })
-      .catch((err) => dispatch({ type: "set_error", error: message(err) }));
-  }
-
-  function handlePatch(body: PatchTaskBody) {
-    if (!state.openTask) return;
-    patchTask(state.openTask.id, body)
+  // handlePatch is threaded into the task modal as onPatch: every inline
+  // control awaits it, so it has to reject on failure (after the error is
+  // surfaced here) for the control's own revert-on-error to run.
+  function handlePatch(body: PatchTaskBody): Promise<void> {
+    if (!state.openTask) return Promise.resolve();
+    return patchTask(state.openTask.id, body)
       .then((task) => {
         dispatch({ type: "saved", task });
         return refresh();
       })
-      .catch((err) => dispatch({ type: "set_error", error: message(err) }));
+      .catch((err) => {
+        dispatch({ type: "set_error", error: message(err) });
+        throw err;
+      });
   }
 
-  // handleDelete removes the open task after a naming confirmation. Like
-  // handleMove it closes over state.openTask rather than any edit-mode draft, so
-  // it works identically from the read and edit views.
-  function handleDelete() {
+  // handleDelete removes the open task after an in-app confirmation naming it
+  // (design.md D13, spec: "Confirmation names the task").
+  async function handleDelete() {
     const t = state.openTask;
     if (!t) return;
-    if (!window.confirm(`Delete task #${t.id} "${t.title}"? This cannot be undone.`)) {
-      return;
-    }
+    const ok = await confirm({
+      title: `${padId(t.id)} · ${t.title}`,
+      description: "Delete this task? This cannot be undone.",
+    });
+    if (!ok) return;
     deleteTask(t.id)
       .then(() => {
         dispatch({ type: "close" });
@@ -203,15 +235,15 @@ export function App() {
 
   // handleMove applies a board drag-and-drop: it performs the same status edit
   // the dialog performs, independent of whichever task the dialog has open.
-  function handleMove(id: number, status: string) {
+  async function handleMove(id: number, status: string) {
     const t = all.find((x) => x.id === id);
     if (!t || t.status === status) return;
     let body: PatchTaskBody;
     if (status === "declined") {
       // The reason is required exactly when the resulting status is `declined`,
-      // mirroring the edit form; a cancelled or blank prompt leaves the task be.
-      const reason = window.prompt("Reason for declining this task?");
-      if (reason === null || reason.trim() === "") return;
+      // mirroring the edit form; a cancelled or blank dialog leaves the task be.
+      const reason = await askReason();
+      if (reason === null) return;
       body = { status, reason };
     } else {
       body = { status };
@@ -221,68 +253,102 @@ export function App() {
       .catch((err) => dispatch({ type: "set_error", error: message(err) }));
   }
 
-  const openId =
-    state.dialogMode === "read" || state.dialogMode === "edit"
-      ? (state.openTask?.id ?? null)
-      : null;
+  const openId = state.dialogMode === "read" ? (state.openTask?.id ?? null) : null;
 
   return (
     <div className="app">
       <TopBar
-        repo={repo}
         query={state.query}
         onQuery={(query) => dispatch({ type: "set_query", query })}
         view={state.view}
         onView={(view) => dispatch({ type: "set_view", view })}
-        onCapture={() => dispatch({ type: "open_create" })}
+        theme={theme}
+        onToggleTheme={toggleTheme}
       />
 
-      <div className="layout">
-        <Sidebar
+      <main className="main">
+        <FilterRow
           all={all}
+          view={state.view}
           status={state.status}
           priority={state.priority}
           tag={state.tag}
           assignee={state.assignee}
-          onPick={(key, value) =>
-            dispatch({ type: "toggle_filter", key, value })
-          }
+          query={state.query}
+          visibleCount={filtered.length}
+          onToggle={(key, value) => dispatch({ type: "toggle_filter", key, value })}
+          onClear={(key) => dispatch({ type: "clear_filter", key })}
+          onReset={() => dispatch({ type: "reset_all" })}
         />
 
-        <main className="main">
-          <ResultBar
-            count={filtered.length}
-            command={currentCommand(state)}
-          />
+        {loadError ? (
+          <div className="load-error" role="alert">
+            Could not load tasks: {loadError}{" "}
+            <button type="button" className="text-btn is-strong" onClick={() => refresh()}>
+              Retry
+            </button>
+          </div>
+        ) : null}
 
-          <div id="listView" hidden={state.view !== "list"}>
+        <div id="listView" hidden={state.view !== "list"}>
+          {loadError && all.length === 0 ? null : filtered.length === 0 ? (
+            <EmptyResult onClear={() => dispatch({ type: "reset_all" })} />
+          ) : (
             <ListView tasks={filtered} openId={openId} onOpen={openTask} />
-          </div>
-          <div className="board" id="boardView" hidden={state.view !== "board"}>
-            <BoardView tasks={filtered} onOpen={openTask} onMove={handleMove} />
-          </div>
-        </main>
-      </div>
+          )}
+        </div>
+        <div className="board" id="boardView" hidden={state.view !== "board"}>
+          {loadError && all.length === 0 ? null : filtered.length === 0 ? (
+            <EmptyResult onClear={() => dispatch({ type: "reset_all" })} />
+          ) : (
+            <BoardView
+              ref={boardRef}
+              tasks={filtered}
+              onOpen={openTask}
+              onMove={handleMove}
+              all={all}
+              onCreated={refresh}
+              onOpenFullForm={openFullFormFromDraft}
+              showToast={showToast}
+            />
+          )}
+        </div>
+      </main>
 
-      {state.dialogMode ? (
-        <TaskDialog
-          mode={state.dialogMode}
+      <button
+        type="button"
+        className="capture-fab"
+        aria-label="Add new task"
+        onClick={openCapture}
+      >
+        +
+      </button>
+      <ToastHost toast={toast} onDismiss={dismissToast} />
+
+      {state.dialogMode === "create" ? (
+        <TaskForm
+          tasks={all}
+          prefill={state.createPrefill}
+          onClose={() => dispatch({ type: "close" })}
+          onCreated={refresh}
+          onOpen={openTask}
+          showToast={showToast}
+        />
+      ) : null}
+      {state.dialogMode === "read" && state.openTask ? (
+        <TaskModal
           task={state.openTask}
           tasks={all}
           error={state.error}
           onClose={() => dispatch({ type: "close" })}
-          onToggleEdit={() =>
-            dispatch({
-              type: state.dialogMode === "edit" ? "leave_edit" : "enter_edit",
-            })
-          }
-          onCancelEdit={() => dispatch({ type: "leave_edit" })}
-          onCreate={handleCreate}
           onPatch={handlePatch}
           onDelete={handleDelete}
           onOpenLink={openTask}
+          onError={(err) => dispatch({ type: "set_error", error: err })}
+          askReason={askReason}
         />
       ) : null}
+      {dialogs}
     </div>
   );
 }

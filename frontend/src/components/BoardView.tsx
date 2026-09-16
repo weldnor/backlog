@@ -1,106 +1,109 @@
-import { useState, type DragEvent, type KeyboardEvent } from "react";
+import { forwardRef, useImperativeHandle, useRef, useState } from "react";
 
 import type { TaskView } from "../api";
-import {
-  BOARD_EMPTY_NOTE,
-  padId,
-  priBadge,
-  STATUS_META,
-  STATUS_ORDER,
-} from "../constants";
-import { TagChips } from "./TagChips";
+import { STATUS_ORDER } from "../constants";
+import type { ParsedDraft } from "../tokens";
+import type { ToastSpec } from "../useToast";
+import { BoardColumn } from "./BoardColumn";
+import type { CaptureHandle } from "./CaptureSlot";
 
 interface BoardViewProps {
   tasks: TaskView[];
   onOpen: (id: number) => void;
   onMove: (id: number, status: string) => void;
+  /** Every task — threaded to each column's capture draft. */
+  all: TaskView[];
+  onCreated: () => void;
+  onOpenFullForm: (parsed: ParsedDraft) => void;
+  showToast: (spec: ToastSpec) => void;
 }
 
-function activateOnKey(e: KeyboardEvent<HTMLDivElement>, run: () => void) {
-  if (e.key === "Enter" || e.key === " ") {
-    e.preventDefault();
-    run();
+export interface BoardViewHandle {
+  /** Opens a capture draft in the first non-collapsed column (design.md D14). */
+  openCapture: () => void;
+}
+
+const COLLAPSED_KEY = "backlog.collapsed";
+
+// Storage can be unavailable (private windows, blocked site data); the
+// collapsed set then simply isn't remembered, matching useTheme's fallback.
+function loadCollapsed(): Set<string> {
+  try {
+    const raw = window.localStorage.getItem(COLLAPSED_KEY);
+    const arr = raw ? JSON.parse(raw) : [];
+    return new Set(Array.isArray(arr) ? arr.filter((x) => typeof x === "string") : []);
+  } catch {
+    return new Set();
   }
 }
 
-export function BoardView({ tasks, onOpen, onMove }: BoardViewProps) {
-  // The status column the pointer is currently over during a drag; drives the
-  // drop-target highlight and is cleared as soon as the drag ends or leaves.
-  const [dragOverStatus, setDragOverStatus] = useState<string | null>(null);
+function saveCollapsed(collapsed: Set<string>) {
+  try {
+    window.localStorage.setItem(COLLAPSED_KEY, JSON.stringify([...collapsed]));
+  } catch {
+    // Not persisted; the collapse still applies for this page.
+  }
+}
+
+// BoardView lays out one BoardColumn per status (design.md D5). Collapsed
+// state is remembered per browser; which card is mid-drag is tracked here so
+// it keeps its `.is-dragging` look as it crosses from one column to another.
+export const BoardView = forwardRef<BoardViewHandle, BoardViewProps>(function BoardView(
+  { tasks, onOpen, onMove, all, onCreated, onOpenFullForm, showToast },
+  ref,
+) {
+  const [collapsed, setCollapsed] = useState<Set<string>>(() => loadCollapsed());
+  const [draggingId, setDraggingId] = useState<number | null>(null);
+  const captureHandles = useRef<Partial<Record<string, CaptureHandle>>>({});
+
+  function toggleCollapse(status: string) {
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (next.has(status)) {
+        next.delete(status);
+      } else {
+        next.add(status);
+      }
+      saveCollapsed(next);
+      return next;
+    });
+  }
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      openCapture: () => {
+        const first = STATUS_ORDER.find((s) => s !== "declined" && !collapsed.has(s));
+        if (first) captureHandles.current[first]?.open();
+      },
+    }),
+    [collapsed],
+  );
 
   return (
     <>
-      {STATUS_ORDER.map((k) => {
-        const list = tasks.filter((t) => t.status === k);
-        return (
-          <div
-            key={k}
-            className={
-              "board-col" + (dragOverStatus === k ? " board-col-drop" : "")
-            }
-            onDragOver={(e: DragEvent<HTMLDivElement>) => {
-              e.preventDefault();
-              e.dataTransfer.dropEffect = "move";
-              setDragOverStatus(k);
-            }}
-            onDragLeave={() => setDragOverStatus(null)}
-            onDragEnd={() => setDragOverStatus(null)}
-            onDrop={(e: DragEvent<HTMLDivElement>) => {
-              e.preventDefault();
-              setDragOverStatus(null);
-              const id = Number(e.dataTransfer.getData("text/plain"));
-              if (Number.isFinite(id) && id > 0) onMove(id, k);
-            }}
-          >
-            <div className="board-head">
-              <span className="label">{STATUS_META[k].headLabel}</span>
-              <span className="count">{list.length}</span>
-            </div>
-            <div className="board-body">
-              {list.map((t) => {
-                const p = priBadge(t);
-                const file = t.metadata.source.files.length
-                  ? t.metadata.source.files[0]
-                  : "no source location";
-                return (
-                  <div
-                    key={t.id}
-                    className={
-                      "board-card" +
-                      (t.priority === "high" ? " pri-high-rule" : "")
-                    }
-                    tabIndex={0}
-                    role="button"
-                    draggable
-                    onDragStart={(e: DragEvent<HTMLDivElement>) => {
-                      e.dataTransfer.setData("text/plain", String(t.id));
-                      e.dataTransfer.effectAllowed = "move";
-                    }}
-                    onClick={() => onOpen(t.id)}
-                    onKeyDown={(e) => activateOnKey(e, () => onOpen(t.id))}
-                  >
-                    <div className="board-card-top">
-                      <span className="board-card-id">{padId(t.id)}</span>
-                      <span className={"pri-label " + p.fg}>{p.label}</span>
-                    </div>
-                    <div className="board-card-title">{t.title}</div>
-                    <div className="board-card-file">{file}</div>
-                    {t.assignee ? (
-                      <div className="board-card-file">@{t.assignee}</div>
-                    ) : null}
-                    <div className="board-card-tags">
-                      <TagChips tags={t.tags} />
-                    </div>
-                  </div>
-                );
-              })}
-              {list.length === 0 ? (
-                <div className="board-empty">{BOARD_EMPTY_NOTE[k]}</div>
-              ) : null}
-            </div>
-          </div>
-        );
-      })}
+      {STATUS_ORDER.map((status) => (
+        <BoardColumn
+          key={status}
+          status={status}
+          tasks={tasks.filter((t) => t.status === status)}
+          collapsed={collapsed.has(status)}
+          onToggleCollapse={() => toggleCollapse(status)}
+          onOpen={onOpen}
+          onMove={onMove}
+          draggingId={draggingId}
+          onDragStart={setDraggingId}
+          onDragEnd={() => setDraggingId(null)}
+          all={all}
+          onCreated={onCreated}
+          onOpenFullForm={onOpenFullForm}
+          showToast={showToast}
+          onCaptureReady={(s, handle) => {
+            if (handle) captureHandles.current[s] = handle;
+            else delete captureHandles.current[s];
+          }}
+        />
+      ))}
     </>
   );
-}
+});

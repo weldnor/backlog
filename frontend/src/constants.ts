@@ -1,24 +1,9 @@
-import type { TaskView } from "./api";
-
 // Fixed lifecycle order, matching internal/task and the old app.js.
 export const STATUS_ORDER = ["new", "todo", "doing", "done", "declined"] as const;
 export const PRI_ORDER = ["high", "medium", "low"] as const;
 
 // The permitted link types, matching internal/task.LinkTypes.
 export const LINK_TYPES = ["related", "blocks", "blocked-by", "duplicates", "duplicated-by"] as const;
-
-export interface StatusMeta {
-  headLabel: string;
-  fg: string;
-}
-
-export const STATUS_META: Record<string, StatusMeta> = {
-  new: { headLabel: "NEW", fg: "status-new" },
-  todo: { headLabel: "TODO", fg: "status-todo" },
-  doing: { headLabel: "DOING", fg: "status-doing" },
-  done: { headLabel: "DONE", fg: "status-done" },
-  declined: { headLabel: "DECLINED", fg: "status-declined" },
-};
 
 // The board's own empty-column copy, kept verbatim from the old UI: it teaches
 // the same distinctions the README does.
@@ -30,26 +15,6 @@ export const BOARD_EMPTY_NOTE: Record<string, string> = {
   declined:
     "Always in scope for search — a duplicate must not hide behind a filter.",
 };
-
-export interface PriMeta {
-  label: string;
-  cls: string;
-  fg: string;
-}
-
-export const PRI_META: Record<string, PriMeta> = {
-  high: { label: "HIGH", cls: "tag tag-outline", fg: "pri-high" },
-  medium: { label: "MEDIUM", cls: "tag tag-accent", fg: "pri-medium" },
-  low: { label: "LOW", cls: "tag tag-neutral", fg: "pri-low" },
-};
-
-export function priBadge(t: TaskView): PriMeta {
-  return PRI_META[t.priority] || { label: t.priority, cls: "tag tag-neutral", fg: "" };
-}
-
-export function statusMeta(t: TaskView): StatusMeta {
-  return STATUS_META[t.status] || { headLabel: t.status, fg: "" };
-}
 
 export function padId(id: number): string {
   return String(id).padStart(3, "0");
@@ -94,11 +59,29 @@ export const LABEL_COLORS = [
 // tagColor hashes the lowercase tag name into LABEL_COLORS, so a tag keeps one
 // colour everywhere it is drawn without anyone choosing it.
 export function tagColor(name: string): string {
+  return LABEL_COLORS[tagIndex(name)];
+}
+
+function tagIndex(name: string): number {
   let h = 0;
   for (const ch of name.toLowerCase()) {
     h = (h * 31 + (ch.codePointAt(0) ?? 0)) >>> 0;
   }
-  return LABEL_COLORS[h % LABEL_COLORS.length];
+  return h % LABEL_COLORS.length;
+}
+
+// Label colours are the same in both themes, so text on a tag chip needs a
+// fixed colour too — dark on the light labels, white on the rest.
+const LIGHT_LABELS = new Set(["blue", "green", "yellow", "cyan"]);
+const LABEL_NAMES = LABEL_COLORS.map((c) => c.slice("var(--label-".length, -1));
+
+// tagChipStyle is the inline style of a tag drawn as a text chip.
+export function tagChipStyle(name: string): { background: string; color: string } {
+  const i = tagIndex(name);
+  return {
+    background: LABEL_COLORS[i],
+    color: LIGHT_LABELS.has(LABEL_NAMES[i]) ? "#131211" : "#ffffff",
+  };
 }
 
 function stripInline(s: string): string {
@@ -132,19 +115,14 @@ export function descExcerpt(markdown: string): string {
   return stripInline(para.join(" "));
 }
 
-// Where the task's file lives on disk — the archive directory once it reaches a
-// terminal status, the working directory otherwise.
-export function taskFilePath(t: TaskView): string {
-  const dir =
-    t.status === "done" || t.status === "declined"
-      ? ".backlog/archive/"
-      : ".backlog/tasks/";
-  return dir + t.file;
-}
-
 export function splitList(s: string): string[] {
   return (s || "")
     .split(",")
     .map((x) => x.trim())
     .filter(Boolean);
 }
+
+// MOD_KEY is how the save/create shortcut's modifier is spelled in hints:
+// ⌘ on Apple platforms, Ctrl+ elsewhere (both keys work everywhere).
+export const MOD_KEY =
+  typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform) ? "⌘" : "Ctrl+";
