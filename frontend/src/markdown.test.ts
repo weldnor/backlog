@@ -16,6 +16,12 @@ describe("inline", () => {
     expect(inline("**loud**")).toBe("<strong>loud</strong>");
     expect(inline("see [docs](https://x)")).toBe('see <a href="https://x">docs</a>');
   });
+
+  it("renders italic with underscores or a single asterisk, without eating bold", () => {
+    expect(inline("_soft_")).toBe("<em>soft</em>");
+    expect(inline("*soft*")).toBe("<em>soft</em>");
+    expect(inline("**loud** and *soft*")).toBe("<strong>loud</strong> and <em>soft</em>");
+  });
 });
 
 describe("md", () => {
@@ -55,5 +61,13 @@ describe("md", () => {
     expect(md("a `b` and **c**")).toBe(
       "<p>a <code>b</code> and <strong>c</strong></p>",
     );
+  });
+
+  it("renders a blockquote, joining consecutive quote lines", () => {
+    expect(md("> one\n> two")).toBe("<blockquote>one two</blockquote>");
+  });
+
+  it("separates a blockquote from surrounding paragraphs", () => {
+    expect(md("a\n> quoted\nb")).toBe("<p>a</p><blockquote>quoted</blockquote><p>b</p>");
   });
 });

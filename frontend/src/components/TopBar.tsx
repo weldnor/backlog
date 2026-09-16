@@ -1,82 +1,75 @@
-import type { RepoInfo } from "../api";
-import { PlusIcon, SearchIcon } from "./icons";
+import type { Theme } from "../useTheme";
+import { CloseIcon, MoonIcon, SearchIcon, SunIcon } from "./icons";
 
 interface TopBarProps {
-  repo: RepoInfo | null;
   query: string;
   onQuery: (q: string) => void;
   view: "list" | "board";
   onView: (v: "list" | "board") => void;
-  onCapture: () => void;
+  theme: Theme;
+  onToggleTheme: () => void;
 }
 
-export function TopBar({
-  repo,
-  query,
-  onQuery,
-  view,
-  onView,
-  onCapture,
-}: TopBarProps) {
+// TopBar is the 58px chrome of the redesign (proposal — Chrome): wordmark,
+// search pill, the List/Board toggle and the theme switch. The sidebar,
+// result bar and CAPTURE button it used to carry are gone — filtering moved
+// to FilterRow and capture moved to the column slots and floating button.
+export function TopBar({ query, onQuery, view, onView, theme, onToggleTheme }: TopBarProps) {
   return (
     <header className="topbar">
-      <div className="wordmark-row">
-        <span>
-          <span className="wordmark">backlog</span>
-          <span className="version">
-            {repo?.version ? " v" + repo.version : ""}
-          </span>
-        </span>
-      </div>
+      <span className="wordmark">Backlog</span>
+      <span className="topbar-divider" aria-hidden="true" />
 
-      {repo?.name ? (
-        <div className="repo-chip">
-          <span>{repo.name}</span>
-          <span className="sep">/</span>
-          <span>.backlog</span>
-          <span className="sep">·</span>
-          <span className="branch">{repo.branch || "—"}</span>
-        </div>
-      ) : null}
-
-      <div className="topbar-spacer" />
-
-      <div className="searchbox">
-        <SearchIcon />
+      <div className="search-pill">
+        <SearchIcon size={15} />
         <input
-          className="input"
-          placeholder="title, description, tags"
+          className="search-input"
+          placeholder="Search tasks, tags, files"
           value={query}
           onChange={(e) => onQuery(e.target.value)}
         />
+        {query ? (
+          <button
+            type="button"
+            className="search-clear"
+            aria-label="Clear search"
+            onClick={() => onQuery("")}
+          >
+            <CloseIcon size={12} />
+          </button>
+        ) : null}
       </div>
 
-      <div className="seg seg-view">
-        <label className="seg-opt">
-          <input
-            type="radio"
-            name="view"
-            value="list"
-            checked={view === "list"}
-            onChange={() => onView("list")}
-          />
-          LIST
-        </label>
-        <label className="seg-opt">
-          <input
-            type="radio"
-            name="view"
-            value="board"
-            checked={view === "board"}
-            onChange={() => onView("board")}
-          />
-          BOARD
-        </label>
+      <div className="topbar-spacer" />
+
+      <div className="view-toggle" role="group" aria-label="View">
+        <button
+          type="button"
+          className={"view-toggle-btn" + (view === "list" ? " is-active" : "")}
+          aria-pressed={view === "list"}
+          onClick={() => onView("list")}
+        >
+          List
+        </button>
+        <button
+          type="button"
+          className={"view-toggle-btn" + (view === "board" ? " is-active" : "")}
+          aria-pressed={view === "board"}
+          onClick={() => onView("board")}
+        >
+          Board
+        </button>
       </div>
 
-      <button className="btn btn-primary btn-capture" onClick={onCapture}>
-        CAPTURE
-        <PlusIcon />
+      <span className="topbar-divider" aria-hidden="true" />
+
+      <button
+        type="button"
+        className="theme-toggle"
+        aria-label={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
+        onClick={onToggleTheme}
+      >
+        {theme === "dark" ? <SunIcon /> : <MoonIcon />}
       </button>
     </header>
   );

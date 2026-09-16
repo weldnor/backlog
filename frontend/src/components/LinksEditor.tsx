@@ -75,23 +75,23 @@ export function LinksEditor({ links, tasks, excludeId, onChange }: LinksEditorPr
   }
 
   return (
-    <div className="field" style={{ marginBottom: 16 }}>
-      <label>
-        Links — typed references to other tasks, recorded on this task only,
-        never mirrored back
-      </label>
+    <div className="form-field links-editor">
+      <span className="field-label">Links</span>
+      <span className="field-hint">
+        Typed references to other tasks, recorded on this task only, never mirrored back
+      </span>
 
       {links.length > 0 ? (
         <div className="links-editor-list">
           {links.map((l) => (
             <div className="links-editor-row" key={l.type + ":" + l.id}>
-              <span className="tag tag-neutral links-editor-type">{l.type}</span>
+              <span className="links-editor-type">{l.type}</span>
               <span className="links-editor-target">
                 #{padId(l.id)} · {taskLabel(tasks, l.id)}
               </span>
               <button
                 type="button"
-                className="btn-icon-plain"
+                className="icon-btn"
                 aria-label={`Remove ${l.type} link to #${padId(l.id)}`}
                 onClick={() => removeLink(l)}
               >
@@ -104,7 +104,7 @@ export function LinksEditor({ links, tasks, excludeId, onChange }: LinksEditorPr
 
       <div className="links-editor-add">
         <select
-          className="input links-editor-type-select"
+          className="field-input links-editor-type-select"
           value={type}
           onChange={(e) => setType(e.target.value)}
           aria-label="Link type"
@@ -119,7 +119,7 @@ export function LinksEditor({ links, tasks, excludeId, onChange }: LinksEditorPr
         <div className="links-editor-combobox">
           <input
             ref={inputRef}
-            className="input"
+            className="field-input"
             value={query}
             placeholder="search by title or #id…"
             onChange={(e) => {
@@ -132,13 +132,13 @@ export function LinksEditor({ links, tasks, excludeId, onChange }: LinksEditorPr
             onKeyDown={onKeyDown}
           />
           {open && candidates.length > 0 ? (
-            <ul className="links-editor-options" role="listbox">
+            <ul className="autocomplete-list links-editor-options" role="listbox">
               {candidates.map((t, i) => (
                 <li
                   key={t.id}
                   role="option"
                   aria-selected={i === activeIdx}
-                  className={"links-editor-option" + (i === activeIdx ? " is-active" : "")}
+                  className={"autocomplete-item links-editor-option" + (i === activeIdx ? " is-active" : "")}
                   onMouseDown={(e) => {
                     // Beat the input's blur so the click still registers.
                     e.preventDefault();
@@ -156,7 +156,7 @@ export function LinksEditor({ links, tasks, excludeId, onChange }: LinksEditorPr
 
         <button
           type="button"
-          className="btn btn-secondary"
+          className="text-btn"
           disabled={candidates.length === 0}
           onClick={() => candidates[0] && addLink(candidates[0].id)}
         >

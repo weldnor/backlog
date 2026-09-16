@@ -18,6 +18,8 @@ export function inline(s: string): string {
   return s
     .replace(/`([^`]+)`/g, "<code>$1</code>")
     .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+    .replace(/_([^_]+)_/g, "<em>$1</em>")
+    .replace(/\*([^*]+)\*/g, "<em>$1</em>")
     .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>');
 }
 
@@ -26,6 +28,7 @@ export function md(src: string): string {
   const out: string[] = [];
   let para: string[] = [];
   let list: string[] = [];
+  let quote: string[] = [];
   let code: string[] | null = null;
 
   function flushP() {
@@ -40,6 +43,12 @@ export function md(src: string): string {
         "<ul>" + list.map((i) => "<li>" + inline(i) + "</li>").join("") + "</ul>",
       );
       list = [];
+    }
+  }
+  function flushQ() {
+    if (quote.length) {
+      out.push("<blockquote>" + inline(quote.join(" ")) + "</blockquote>");
+      quote = [];
     }
   }
 
@@ -57,26 +66,37 @@ export function md(src: string): string {
     if (/^```/.test(line)) {
       flushP();
       flushL();
+      flushQ();
       code = [];
       return;
     }
     if (/^#{1,6}\s/.test(line)) {
       flushP();
       flushL();
+      flushQ();
       out.push("<h3>" + inline(line.replace(/^#{1,6}\s+/, "")) + "</h3>");
       return;
     }
     if (/^[-*]\s+/.test(line)) {
       flushP();
+      flushQ();
       list.push(line.replace(/^[-*]\s+/, ""));
+      return;
+    }
+    if (/^&gt;\s+/.test(line)) {
+      flushP();
+      flushL();
+      quote.push(line.replace(/^&gt;\s+/, ""));
       return;
     }
     if (line === "") {
       flushP();
       flushL();
+      flushQ();
       return;
     }
     flushL();
+    flushQ();
     para.push(line);
   });
 
@@ -85,5 +105,6 @@ export function md(src: string): string {
   }
   flushP();
   flushL();
+  flushQ();
   return out.join("");
 }
