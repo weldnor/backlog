@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useReducer, useRef, useState } from "react";
+import { useEffect, useMemo, useReducer, useState } from "react";
 
 import { deleteTask, getTask, patchTask, type PatchTaskBody, type TaskView } from "./api";
-import { BoardView, type BoardViewHandle } from "./components/BoardView";
+import { BoardView } from "./components/BoardView";
 import { EmptyResult } from "./components/EmptyResult";
 import { FilterRow } from "./components/FilterRow";
 import { hasOpenLayer } from "./components/LayeredDialog";
@@ -136,7 +136,6 @@ export function App() {
   const { theme, toggle: toggleTheme } = useTheme();
   const { confirm, askReason, dialogs } = useDialogs();
   const { toast, show: showToast, dismiss: dismissToast } = useToast();
-  const boardRef = useRef<BoardViewHandle>(null);
   const [menu, setMenu] = useState<{ id: number; x: number; y: number } | null>(null);
 
   const { all, visible, loadError, refresh } = useTasks({
@@ -146,16 +145,11 @@ export function App() {
     assignee: state.assignee,
   });
 
-  // The floating capture button and the "n" shortcut open a draft in the
-  // board's first column, or the full form in list view (design.md D14). "n"
-  // is ignored while a text field has focus or a dialog layer is open.
+  // The floating capture button and the "n" shortcut open the full form in
+  // both views. "n" is ignored while a text field has focus or a dialog layer is open.
   function openCapture() {
     if (state.dialogMode || hasOpenLayer()) return;
-    if (state.view === "board") {
-      boardRef.current?.openCapture();
-    } else {
-      dispatch({ type: "open_create" });
-    }
+    dispatch({ type: "open_create" });
   }
 
   useEffect(() => {
@@ -308,7 +302,6 @@ export function App() {
             <EmptyResult onClear={() => dispatch({ type: "reset_all" })} />
           ) : (
             <BoardView
-              ref={boardRef}
               tasks={filtered}
               onOpen={openTask}
               onMove={handleMove}

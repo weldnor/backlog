@@ -679,16 +679,14 @@ describe("App", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("opens a capture draft in the first column when 'n' is pressed on the board", async () => {
+  it("opens the full form when 'n' is pressed on the board", async () => {
     const user = userEvent.setup();
     render(<App />);
     await showBoard(user);
 
     await user.keyboard("n");
 
-    expect(
-      within(column("New")).getByPlaceholderText(/Title, #tag/),
-    ).toBeInTheDocument();
+    expect(await screen.findByRole("dialog")).toBeInTheDocument();
   });
 
   it("opens the full form when 'n' is pressed in list view", async () => {

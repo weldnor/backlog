@@ -5,7 +5,7 @@ import { copyText } from "../clipboard";
 import { BOARD_EMPTY_NOTE, padId, STATUS_LABEL } from "../constants";
 import type { ParsedDraft } from "../tokens";
 import type { ToastSpec } from "../useToast";
-import { CaptureSlot, type CaptureHandle } from "./CaptureSlot";
+import { CaptureSlot } from "./CaptureSlot";
 import { TaskCard } from "./TaskCard";
 
 // columnMarkdown is the column menu's "Copy list as markdown" output
@@ -120,8 +120,6 @@ interface BoardColumnProps {
   onCreated: () => void;
   onOpenFullForm: (parsed: ParsedDraft) => void;
   showToast: (spec: ToastSpec) => void;
-  /** Registers this column's capture handle so the board can open it from outside (the "n" shortcut). */
-  onCaptureReady?: (status: string, handle: CaptureHandle | null) => void;
 }
 
 // BoardColumn is one status lane of the board (design.md D5): a header with
@@ -143,7 +141,6 @@ export function BoardColumn({
   onCreated,
   onOpenFullForm,
   showToast,
-  onCaptureReady,
 }: BoardColumnProps) {
   const [isOver, setIsOver] = useState(false);
   const label = STATUS_LABEL[status] ?? status;
@@ -225,7 +222,6 @@ export function BoardColumn({
             onOpen={onOpen}
             onOpenFullForm={onOpenFullForm}
             showToast={showToast}
-            onReady={onCaptureReady && ((handle) => onCaptureReady(status, handle))}
           />
         ) : null}
       </div>

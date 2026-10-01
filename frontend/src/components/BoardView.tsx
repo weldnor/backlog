@@ -1,11 +1,10 @@
-import { forwardRef, useImperativeHandle, useRef, useState } from "react";
+import { useState } from "react";
 
 import type { TaskView } from "../api";
 import { STATUS_ORDER } from "../constants";
 import type { ParsedDraft } from "../tokens";
 import type { ToastSpec } from "../useToast";
 import { BoardColumn } from "./BoardColumn";
-import type { CaptureHandle } from "./CaptureSlot";
 
 interface BoardViewProps {
   tasks: TaskView[];
@@ -17,11 +16,6 @@ interface BoardViewProps {
   onCreated: () => void;
   onOpenFullForm: (parsed: ParsedDraft) => void;
   showToast: (spec: ToastSpec) => void;
-}
-
-export interface BoardViewHandle {
-  /** Opens a capture draft in the first non-collapsed column (design.md D14). */
-  openCapture: () => void;
 }
 
 const COLLAPSED_KEY = "backlog.collapsed";
@@ -49,13 +43,11 @@ function saveCollapsed(collapsed: Set<string>) {
 // BoardView lays out one BoardColumn per status (design.md D5). Collapsed
 // state is remembered per browser; which card is mid-drag is tracked here so
 // it keeps its `.is-dragging` look as it crosses from one column to another.
-export const BoardView = forwardRef<BoardViewHandle, BoardViewProps>(function BoardView(
-  { tasks, onOpen, onMove, onMenu, all, onCreated, onOpenFullForm, showToast },
-  ref,
+export function BoardView(
+  { tasks, onOpen, onMove, onMenu, all, onCreated, onOpenFullForm, showToast }: BoardViewProps,
 ) {
   const [collapsed, setCollapsed] = useState<Set<string>>(() => loadCollapsed());
   const [draggingId, setDraggingId] = useState<number | null>(null);
-  const captureHandles = useRef<Partial<Record<string, CaptureHandle>>>({});
 
   function toggleCollapse(status: string) {
     setCollapsed((prev) => {
@@ -69,17 +61,6 @@ export const BoardView = forwardRef<BoardViewHandle, BoardViewProps>(function Bo
       return next;
     });
   }
-
-  useImperativeHandle(
-    ref,
-    () => ({
-      openCapture: () => {
-        const first = STATUS_ORDER.find((s) => s !== "declined" && !collapsed.has(s));
-        if (first) captureHandles.current[first]?.open();
-      },
-    }),
-    [collapsed],
-  );
 
   return (
     <>
@@ -100,12 +81,8 @@ export const BoardView = forwardRef<BoardViewHandle, BoardViewProps>(function Bo
           onCreated={onCreated}
           onOpenFullForm={onOpenFullForm}
           showToast={showToast}
-          onCaptureReady={(s, handle) => {
-            if (handle) captureHandles.current[s] = handle;
-            else delete captureHandles.current[s];
-          }}
         />
       ))}
     </>
   );
-});
+}
