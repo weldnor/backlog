@@ -114,6 +114,7 @@ interface BoardColumnProps {
   draggingId: number | null;
   onDragStart: (id: number) => void;
   onDragEnd: () => void;
+  onMenu?: (id: number, x: number, y: number) => void;
   /** Every task, threaded to the column's capture draft (duplicate check, tag autocomplete). */
   all: TaskView[];
   onCreated: () => void;
@@ -137,6 +138,7 @@ export function BoardColumn({
   draggingId,
   onDragStart,
   onDragEnd,
+  onMenu,
   all,
   onCreated,
   onOpenFullForm,
@@ -211,6 +213,7 @@ export function BoardColumn({
             onOpen={onOpen}
             onDragStart={onDragStart}
             onDragEnd={onDragEnd}
+            onMenu={onMenu}
           />
         ))}
         {tasks.length === 0 ? <div className="board-empty">{BOARD_EMPTY_NOTE[status]}</div> : null}

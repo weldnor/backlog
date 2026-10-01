@@ -303,6 +303,7 @@ a:hover{border-bottom-color:var(--ink-100)}
 .card-foot{display:flex;align-items:center;gap:6px}
 .pri-dot{width:8px;height:8px;border-radius:var(--radius-full);flex:0 0 auto}
 .card-pri{font:var(--text-count);color:var(--ink-40)}
+.card-id{font:var(--text-count);color:var(--ink-40)}
 .card-foot .spacer{flex:1 1 auto}
 .card-assignee{font:var(--text-count);color:var(--ink-40)}
 
@@ -387,6 +388,8 @@ a:hover{border-bottom-color:var(--ink-100)}
   white-space:nowrap;padding:8px 10px;border-radius:var(--radius-label);cursor:pointer;
 }
 .popover-item:hover{background:var(--ink-06)}
+.popover-item.is-danger{color:var(--label-red-deep)}
+.task-menu{position:fixed;right:auto;z-index:20}
 
 /* ── Capture (design.md D7/D8/D9) ── */
 .capture-slot{width:100%}

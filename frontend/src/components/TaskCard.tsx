@@ -1,7 +1,7 @@
-import type { DragEvent, KeyboardEvent } from "react";
+import type { DragEvent, KeyboardEvent, MouseEvent } from "react";
 
 import type { TaskView } from "../api";
-import { descExcerpt, PRI_DOT, PRI_LABEL, tagColor } from "../constants";
+import { descExcerpt, padId, PRI_DOT, PRI_LABEL, tagColor } from "../constants";
 
 // The most label bars a card draws; the rest are still listed in the modal.
 const MAX_LABELS = 6;
@@ -22,12 +22,13 @@ interface TaskCardProps {
   onOpen: (id: number) => void;
   onDragStart?: (id: number) => void;
   onDragEnd?: () => void;
+  onMenu?: (id: number, x: number, y: number) => void;
 }
 
 // TaskCard is the board card of mockup 01 (design.md D6): label bars, title,
 // the start of the description, then priority and assignee. It is focusable
 // and opens on Enter or Space, and carries the task id through the drag.
-export function TaskCard({ task, isDragging, onOpen, onDragStart, onDragEnd }: TaskCardProps) {
+export function TaskCard({ task, isDragging, onOpen, onDragStart, onDragEnd, onMenu }: TaskCardProps) {
   const excerpt = descExcerpt(task.description);
 
   return (
@@ -44,6 +45,11 @@ export function TaskCard({ task, isDragging, onOpen, onDragStart, onDragEnd }: T
       }}
       onDragEnd={() => onDragEnd?.()}
       onClick={() => onOpen(task.id)}
+      onContextMenu={(e: MouseEvent<HTMLElement>) => {
+        if (!onMenu) return;
+        e.preventDefault();
+        onMenu(task.id, e.clientX, e.clientY);
+      }}
       onKeyDown={(e: KeyboardEvent<HTMLElement>) => {
         if (e.key === "Enter" || e.key === " ") {
           e.preventDefault();
@@ -61,6 +67,7 @@ export function TaskCard({ task, isDragging, onOpen, onDragStart, onDragEnd }: T
       <div className="card-title">{task.title}</div>
       {excerpt ? <p className="card-desc">{excerpt}</p> : null}
       <div className="card-foot">
+        <span className="card-id">{padId(task.id)}</span>
         <PriorityDot priority={task.priority} />
         <span className="card-pri">{PRI_LABEL[task.priority] ?? task.priority}</span>
         <span className="spacer" />

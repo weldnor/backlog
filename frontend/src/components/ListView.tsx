@@ -8,6 +8,7 @@ interface ListViewProps {
   tasks: TaskView[];
   openId: number | null;
   onOpen: (id: number) => void;
+  onMenu?: (id: number, x: number, y: number) => void;
 }
 
 function activateOnKey(e: KeyboardEvent<HTMLDivElement>, run: () => void) {
@@ -20,7 +21,7 @@ function activateOnKey(e: KeyboardEvent<HTMLDivElement>, run: () => void) {
 // ListView is the DS-styled list (design.md D15): no mockup frame exists for
 // it, so it borrows the card's typography and hover ring directly. The tag
 // and status columns hide under 720px (style.css media query).
-export function ListView({ tasks, openId, onOpen }: ListViewProps) {
+export function ListView({ tasks, openId, onOpen, onMenu }: ListViewProps) {
   return (
     <div className="list" role="list">
       {tasks.map((t) => {
@@ -32,6 +33,11 @@ export function ListView({ tasks, openId, onOpen }: ListViewProps) {
             tabIndex={0}
             className={"list-row" + (t.id === openId ? " is-open" : "")}
             onClick={() => onOpen(t.id)}
+            onContextMenu={(e) => {
+              if (!onMenu) return;
+              e.preventDefault();
+              onMenu(t.id, e.clientX, e.clientY);
+            }}
             onKeyDown={(e) => activateOnKey(e, () => onOpen(t.id))}
           >
             <span className="list-id">{padId(t.id)}</span>

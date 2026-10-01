@@ -11,6 +11,7 @@ interface BoardViewProps {
   tasks: TaskView[];
   onOpen: (id: number) => void;
   onMove: (id: number, status: string) => void;
+  onMenu?: (id: number, x: number, y: number) => void;
   /** Every task — threaded to each column's capture draft. */
   all: TaskView[];
   onCreated: () => void;
@@ -49,7 +50,7 @@ function saveCollapsed(collapsed: Set<string>) {
 // state is remembered per browser; which card is mid-drag is tracked here so
 // it keeps its `.is-dragging` look as it crosses from one column to another.
 export const BoardView = forwardRef<BoardViewHandle, BoardViewProps>(function BoardView(
-  { tasks, onOpen, onMove, all, onCreated, onOpenFullForm, showToast },
+  { tasks, onOpen, onMove, onMenu, all, onCreated, onOpenFullForm, showToast },
   ref,
 ) {
   const [collapsed, setCollapsed] = useState<Set<string>>(() => loadCollapsed());
@@ -91,6 +92,7 @@ export const BoardView = forwardRef<BoardViewHandle, BoardViewProps>(function Bo
           onToggleCollapse={() => toggleCollapse(status)}
           onOpen={onOpen}
           onMove={onMove}
+          onMenu={onMenu}
           draggingId={draggingId}
           onDragStart={setDraggingId}
           onDragEnd={() => setDraggingId(null)}

@@ -70,3 +70,13 @@ describe("TaskCard", () => {
     expect(card).toHaveAttribute("draggable", "true");
   });
 });
+
+describe("TaskCard id and menu", () => {
+  it("shows the padded id and reports a right-click", async () => {
+    const onMenu = vi.fn();
+    render(<TaskCard task={task()} onOpen={() => {}} onMenu={onMenu} />);
+    expect(screen.getByText("007")).toBeTruthy();
+    await userEvent.pointer({ keys: "[MouseRight]", target: screen.getByRole("button") });
+    expect(onMenu).toHaveBeenCalledWith(7, expect.any(Number), expect.any(Number));
+  });
+});

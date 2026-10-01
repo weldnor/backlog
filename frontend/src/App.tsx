@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useReducer, useRef } from "react";
+import { useEffect, useMemo, useReducer, useRef, useState } from "react";
 
 import { deleteTask, getTask, patchTask, type PatchTaskBody, type TaskView } from "./api";
 import { BoardView, type BoardViewHandle } from "./components/BoardView";
@@ -7,9 +7,11 @@ import { FilterRow } from "./components/FilterRow";
 import { hasOpenLayer } from "./components/LayeredDialog";
 import { ListView } from "./components/ListView";
 import { TaskForm } from "./components/TaskForm";
+import { TaskMenu } from "./components/TaskMenu";
 import { TaskModal } from "./components/TaskModal";
 import { ToastHost } from "./components/ToastHost";
 import { TopBar } from "./components/TopBar";
+import { copyText } from "./clipboard";
 import { padId } from "./constants";
 import type { ParsedDraft } from "./tokens";
 import { useDialogs } from "./useDialogs";
@@ -135,6 +137,7 @@ export function App() {
   const { confirm, askReason, dialogs } = useDialogs();
   const { toast, show: showToast, dismiss: dismissToast } = useToast();
   const boardRef = useRef<BoardViewHandle>(null);
+  const [menu, setMenu] = useState<{ id: number; x: number; y: number } | null>(null);
 
   const { all, visible, loadError, refresh } = useTasks({
     status: state.status,
@@ -218,8 +221,10 @@ export function App() {
   // handleDelete removes the open task after an in-app confirmation naming it
   // (design.md D13, spec: "Confirmation names the task").
   async function handleDelete() {
-    const t = state.openTask;
-    if (!t) return;
+    if (state.openTask) await deleteWithConfirm(state.openTask);
+  }
+
+  async function deleteWithConfirm(t: TaskView) {
     const ok = await confirm({
       title: `${padId(t.id)} · ${t.title}`,
       description: "Delete this task? This cannot be undone.",
@@ -227,7 +232,7 @@ export function App() {
     if (!ok) return;
     deleteTask(t.id)
       .then(() => {
-        dispatch({ type: "close" });
+        if (state.openTask?.id === t.id) dispatch({ type: "close" });
         return refresh();
       })
       .catch((err) => dispatch({ type: "set_error", error: message(err) }));
@@ -253,6 +258,7 @@ export function App() {
       .catch((err) => dispatch({ type: "set_error", error: message(err) }));
   }
 
+  const menuTask = menu ? all.find((t) => t.id === menu.id) : undefined;
   const openId = state.dialogMode === "read" ? (state.openTask?.id ?? null) : null;
 
   return (
@@ -294,7 +300,7 @@ export function App() {
           {loadError && all.length === 0 ? null : filtered.length === 0 ? (
             <EmptyResult onClear={() => dispatch({ type: "reset_all" })} />
           ) : (
-            <ListView tasks={filtered} openId={openId} onOpen={openTask} />
+            <ListView tasks={filtered} openId={openId} onOpen={openTask} onMenu={(id, x, y) => setMenu({ id, x, y })} />
           )}
         </div>
         <div className="board" id="boardView" hidden={state.view !== "board"}>
@@ -306,6 +312,7 @@ export function App() {
               tasks={filtered}
               onOpen={openTask}
               onMove={handleMove}
+              onMenu={(id, x, y) => setMenu({ id, x, y })}
               all={all}
               onCreated={refresh}
               onOpenFullForm={openFullFormFromDraft}
@@ -346,6 +353,18 @@ export function App() {
           onOpenLink={openTask}
           onError={(err) => dispatch({ type: "set_error", error: err })}
           askReason={askReason}
+        />
+      ) : null}
+      {menuTask ? (
+        <TaskMenu
+          task={menuTask}
+          x={menu!.x}
+          y={menu!.y}
+          onClose={() => setMenu(null)}
+          onOpen={() => openTask(menuTask.id)}
+          onCopyId={() => void copyText(padId(menuTask.id))}
+          onMove={(status) => void handleMove(menuTask.id, status)}
+          onDelete={() => void deleteWithConfirm(menuTask)}
         />
       ) : null}
       {dialogs}
